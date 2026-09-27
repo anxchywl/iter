@@ -5,9 +5,11 @@ from pathlib import Path
 from threading import Barrier
 
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 from alembic import command
+from app.main import create_app
 
 
 def employer(client, auth):
@@ -534,6 +536,45 @@ def test_reports_are_private_idempotent_and_audited(client, auth):
     )
     events = client.get("/api/v1/admin/audit", headers=auth, params={"entity_id": report_id}).json()
     assert events["items"][0]["details"]["to"] == "resolved"
+
+
+def test_public_submissions_are_disabled_by_default(client, auth, database_url, monkeypatch):
+    owner = employer(client, auth)
+    item = published(client, auth, owner["id"])
+    monkeypatch.delenv("FEEDBACK_ENABLED", raising=False)
+    app = create_app(database_url, {"operator": "another-test-admin-token-with-32-characters"})
+    with TestClient(app) as disabled_client:
+        review = disabled_client.post(
+            "/api/v1/reviews",
+            json={
+                "request_id": "d87e5862-ecaf-4db2-96f3-e74ec31120c4",
+                "listing_id": item["id"],
+                "season_year": item["season_year"],
+                "role": "Front desk",
+                "pay_match": "unknown",
+                "pay_clarity": "unknown",
+                "hours_match": "unknown",
+                "housing_match": "unknown",
+                "transport_match": "unknown",
+                "self_report_consent": True,
+            },
+        )
+        report = disabled_client.post(
+            "/api/v1/reports",
+            json={
+                "request_id": "be3d221b-dbf4-4d07-a65f-b9f805fbac40",
+                "item_type": "listing",
+                "item_id": item["id"],
+                "reason": "inaccurate",
+            },
+        )
+        assert review.status_code == 503
+        assert report.status_code == 503
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM reviews")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM reports")) == 0
+    engine.dispose()
 
 
 def test_review_migration_preserves_existing_rows(client, auth, database_url):

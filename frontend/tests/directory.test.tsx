@@ -59,6 +59,7 @@ describe("public search and rendering", () => {
       <Reviews
         count={1}
         locale="ru"
+        feedbackEnabled
         items={[
           {
             id: "22222222-2222-4222-8222-222222222222",

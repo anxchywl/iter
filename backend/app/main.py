@@ -147,6 +147,7 @@ def locked_listing(session: Session, listing_id: str, expected_version: int) -> 
 def create_app(
     database_url: str | None = None,
     admin_credentials: dict[str, str] | None = None,
+    feedback_enabled: bool | None = None,
 ) -> FastAPI:
     url = database_url or os.environ.get("DATABASE_URL")
     if not url or not url.startswith("postgresql+psycopg://"):
@@ -156,6 +157,11 @@ def create_app(
     app = FastAPI(title="Iter directory API", docs_url=None, redoc_url=None)
     app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
     app.state.admin_credentials = credentials
+    app.state.feedback_enabled = (
+        os.environ.get("FEEDBACK_ENABLED") == "true"
+        if feedback_enabled is None
+        else feedback_enabled
+    )
     limiter = WriteLimiter()
     app.state.write_limiter = limiter
     app.add_middleware(WriteGuard, limiter=limiter)
@@ -314,6 +320,8 @@ def create_app(
 
     @app.post("/api/v1/reviews", status_code=202)
     def submit_review(payload: ReviewSubmit, session: SessionDep, request: Request) -> dict:
+        if not request.app.state.feedback_enabled:
+            raise HTTPException(status_code=503, detail="Submissions unavailable")
         content = payload.model_dump(mode="json", exclude={"self_report_consent"})
         request_id = content["request_id"]
         content_hash = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
@@ -358,6 +366,8 @@ def create_app(
 
     @app.post("/api/v1/reports", status_code=202)
     def submit_report(payload: ReportSubmit, session: SessionDep, request: Request) -> dict:
+        if not request.app.state.feedback_enabled:
+            raise HTTPException(status_code=503, detail="Submissions unavailable")
         content = payload.model_dump(mode="json")
         request_id = content["request_id"]
         content_hash = hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()

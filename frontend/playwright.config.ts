@@ -16,6 +16,7 @@ export default defineConfig({
       env: {
         DIRECTORY_API_URL: "http://127.0.0.1:18017",
         DIRECTORY_DEMO_MODE: "true",
+        FEEDBACK_ENABLED: "true",
       },
       reuseExistingServer: false,
       timeout: 30000,

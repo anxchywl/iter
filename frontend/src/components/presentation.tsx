@@ -335,10 +335,12 @@ export function Reviews({
   items,
   count,
   locale,
+  feedbackEnabled = false,
 }: {
   items: Review[];
   count: number;
   locale: Locale;
+  feedbackEnabled?: boolean;
 }) {
   const t = getCopy(locale);
   return (
@@ -389,7 +391,13 @@ export function Reviews({
                 </div>
               </dl>
               {item.text && <p>{plainText(item.text)}</p>}
-              <ReportForm itemType="review" itemId={item.id} locale={locale} />
+              {feedbackEnabled && (
+                <ReportForm
+                  itemType="review"
+                  itemId={item.id}
+                  locale={locale}
+                />
+              )}
             </article>
           ))}
         </div>

@@ -39,7 +39,11 @@ def client(database_url: str):
             )
         )
     engine.dispose()
-    app = create_app(database_url, {"operator": "test-admin-token-with-at-least-32-characters"})
+    app = create_app(
+        database_url,
+        {"operator": "test-admin-token-with-at-least-32-characters"},
+        feedback_enabled=True,
+    )
     with TestClient(app) as test_client:
         yield test_client
 

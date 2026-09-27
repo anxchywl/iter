@@ -304,6 +304,7 @@ export async function DetailPage({
   id: string;
 }) {
   const t = getCopy(locale);
+  const feedbackEnabled = process.env.FEEDBACK_ENABLED === "true";
   const path = `/jobs/${id}`;
   const result = await getListing(id);
   if (result.kind !== "ok") {
@@ -338,9 +339,11 @@ export async function DetailPage({
                     ? t.missingText
                     : t.errorText}
             </p>
-            {(stale || unavailable) && /^[0-9a-f-]{36}$/i.test(id) && (
-              <ReportForm itemType="listing" itemId={id} locale={locale} />
-            )}
+            {feedbackEnabled &&
+              (stale || unavailable) &&
+              /^[0-9a-f-]{36}$/i.test(id) && (
+                <ReportForm itemType="listing" itemId={id} locale={locale} />
+              )}
             <Link href={localePath(locale)}>{t.browse}</Link>
           </div>
         </div>
@@ -404,19 +407,24 @@ export async function DetailPage({
                 items={reviews.data.items}
                 count={reviews.data.count}
                 locale={locale}
+                feedbackEnabled={feedbackEnabled}
               />
             )}
-            <ReviewForm
-              listingId={listing.id}
-              seasonYear={listing.season_year}
-              exampleRole={plainText(listing.role) || ""}
-              locale={locale}
-            />
-            <ReportForm
-              itemType="listing"
-              itemId={listing.id}
-              locale={locale}
-            />
+            {feedbackEnabled && (
+              <>
+                <ReviewForm
+                  listingId={listing.id}
+                  seasonYear={listing.season_year}
+                  exampleRole={plainText(listing.role) || ""}
+                  locale={locale}
+                />
+                <ReportForm
+                  itemType="listing"
+                  itemId={listing.id}
+                  locale={locale}
+                />
+              </>
+            )}
           </div>
           <aside className="evidence-panel" aria-labelledby="evidence-heading">
             <p className="eyebrow">02 / {t.evidence}</p>

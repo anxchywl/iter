@@ -8,6 +8,12 @@ export async function POST(
   if (kind !== "reviews" && kind !== "reports") {
     return NextResponse.json({ detail: "Not found" }, { status: 404 });
   }
+  if (process.env.FEEDBACK_ENABLED !== "true") {
+    return NextResponse.json(
+      { detail: "Submissions unavailable" },
+      { status: 503 },
+    );
+  }
   if (
     request.headers.get("content-type")?.split(";")[0] !== "application/json"
   ) {

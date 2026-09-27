@@ -49,6 +49,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://iter_local:${ITER_DB_PASSWORD}@db:5432/iter_local
       ADMIN_CREDENTIALS_JSON: '{"local-operator":"${ITER_ADMIN_TOKEN:?generate .env.local first}"}'
+      FEEDBACK_ENABLED: "true"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -78,6 +79,7 @@ services:
     environment:
       DIRECTORY_API_URL: http://backend:8000
       DIRECTORY_DEMO_MODE: "false"
+      FEEDBACK_ENABLED: "true"
     depends_on:
       backend:
         condition: service_healthy
