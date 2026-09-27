@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "local generated files and installed dependencies"
+paths = [
+  '(^|/)(\.git|\.next|\.venv|node_modules|test-results|playwright-report|__pycache__)/',
+  '(^|/)\.env\.local$',
+  '(^|/)tsconfig\.tsbuildinfo$',
+]
