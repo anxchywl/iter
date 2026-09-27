@@ -745,6 +745,9 @@ def create_app(
         status: Annotated[str, Query(pattern="^(pending|resolved|dismissed)$")] = "pending",
     ) -> dict:
         rows = session.scalars(
+            if target in {"rejected", "removed"}:
+                review.role = "redacted"
+                review.text = None
             select(Report)
             .where(Report.status == status)
             .order_by(Report.submitted_at, Report.id)

@@ -492,6 +492,13 @@ def test_review_redaction_rejection_and_public_boundary(client, auth):
         ).status_code
         == 200
     )
+    removed_record = client.get(f"/api/v1/admin/reviews/{review_id}", headers=auth).json()
+    assert removed_record["role"] == "redacted"
+    assert removed_record["text"] is None
+    assert client.post("/api/v1/reviews", json=payload).json() == {
+        "receipt_id": review_id,
+        "status": "rejected",
+    }
     assert client.get(f"/api/v1/listings/{item['id']}/reviews").json()["count"] == 0
 
     rejected = client.post(
@@ -506,6 +513,13 @@ def test_review_redaction_rejection_and_public_boundary(client, auth):
         ).status_code
         == 200
     )
+    rejected_record = client.get(f"/api/v1/admin/reviews/{rejected}", headers=auth).json()
+    assert rejected_record["role"] == "redacted"
+    assert rejected_record["text"] is None
+    assert client.post(
+        "/api/v1/reviews",
+        json={**payload, "request_id": "a98fd2c1-69d9-4bc1-b00f-afbda060a055"},
+    ).json() == {"receipt_id": rejected, "status": "rejected"}
     assert client.get(f"/api/v1/listings/{item['id']}/reviews").json()["count"] == 0
 
 
