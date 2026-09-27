@@ -665,14 +665,32 @@ def create_app(
         session: SessionDep,
         actor: AdminDep,
         status: Annotated[str, Query(pattern="^(pending|approved|rejected|removed)$")] = "pending",
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        cursor: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
     ) -> dict:
+        conditions = [Review.status == status]
+        if cursor:
+            boundary = session.get(Review, cursor)
+            if boundary is None or boundary.status != status:
+                raise missing()
+            conditions.append(
+                or_(
+                    Review.submitted_at > boundary.submitted_at,
+                    (Review.submitted_at == boundary.submitted_at) & (Review.id > boundary.id),
+                )
+            )
         rows = session.scalars(
             select(Review)
-            .where(Review.status == status)
+            .where(*conditions)
             .order_by(Review.submitted_at, Review.id)
-            .limit(100)
+            .limit(limit + 1)
         ).all()
-        return jsonable_encoder({"items": [admin_record(row) for row in rows]})
+        return jsonable_encoder(
+            {
+                "items": [admin_record(row) for row in rows[:limit]],
+                "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
+            }
+        )
 
     @app.post("/api/v1/admin/reviews/{review_id}/redact")
     def redact_review(
@@ -727,6 +745,9 @@ def create_app(
                 raise conflict()
             prior = review.status
             review.status = target
+            if target in {"rejected", "removed"}:
+                review.role = "redacted"
+                review.text = None
             review.version += 1
             audit(
                 session,
@@ -743,17 +764,32 @@ def create_app(
         session: SessionDep,
         actor: AdminDep,
         status: Annotated[str, Query(pattern="^(pending|resolved|dismissed)$")] = "pending",
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        cursor: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
     ) -> dict:
+        conditions = [Report.status == status]
+        if cursor:
+            boundary = session.get(Report, cursor)
+            if boundary is None or boundary.status != status:
+                raise missing()
+            conditions.append(
+                or_(
+                    Report.submitted_at > boundary.submitted_at,
+                    (Report.submitted_at == boundary.submitted_at) & (Report.id > boundary.id),
+                )
+            )
         rows = session.scalars(
-            if target in {"rejected", "removed"}:
-                review.role = "redacted"
-                review.text = None
             select(Report)
-            .where(Report.status == status)
+            .where(*conditions)
             .order_by(Report.submitted_at, Report.id)
-            .limit(100)
+            .limit(limit + 1)
         ).all()
-        return jsonable_encoder({"items": [admin_record(row) for row in rows]})
+        return jsonable_encoder(
+            {
+                "items": [admin_record(row) for row in rows[:limit]],
+                "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
+            }
+        )
 
     @app.post("/api/v1/admin/reports/{report_id}/{decision}")
     def decide_report(
@@ -786,17 +822,44 @@ def create_app(
         return jsonable_encoder(admin_record(report))
 
     @app.get("/api/v1/admin/listings-needing-confirmation")
-    def listings_needing_confirmation(session: SessionDep, actor: AdminDep) -> dict:
+    def listings_needing_confirmation(
+        session: SessionDep,
+        actor: AdminDep,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        cursor: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
+    ) -> dict:
+        conditions = [
+            Listing.status.in_(["published", "expired"]),
+            Listing.last_confirmed_at <= now_utc() - FRESHNESS,
+        ]
+        if cursor:
+            boundary = session.get(Listing, cursor)
+            if (
+                boundary is None
+                or boundary.status not in {"published", "expired"}
+                or boundary.last_confirmed_at is None
+                or boundary.last_confirmed_at > now_utc() - FRESHNESS
+            ):
+                raise missing()
+            conditions.append(
+                or_(
+                    Listing.last_confirmed_at > boundary.last_confirmed_at,
+                    (Listing.last_confirmed_at == boundary.last_confirmed_at)
+                    & (Listing.id > boundary.id),
+                )
+            )
         rows = session.scalars(
             select(Listing)
-            .where(
-                Listing.status.in_(["published", "expired"]),
-                Listing.last_confirmed_at <= now_utc() - FRESHNESS,
-            )
+            .where(*conditions)
             .order_by(Listing.last_confirmed_at, Listing.id)
-            .limit(100)
+            .limit(limit + 1)
         ).all()
-        return jsonable_encoder({"items": [admin_record(row) for row in rows]})
+        return jsonable_encoder(
+            {
+                "items": [admin_record(row) for row in rows[:limit]],
+                "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
+            }
+        )
 
     @app.get("/api/v1/admin/audit")
     def read_audit(
@@ -807,15 +870,36 @@ def create_app(
         ] = None,
         entity_id: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        cursor: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
     ) -> dict:
         query = select(AuditEvent)
         if entity_type:
             query = query.where(AuditEvent.entity_type == entity_type)
         if entity_id:
             query = query.where(AuditEvent.entity_id == entity_id)
+        if cursor:
+            boundary = session.get(AuditEvent, cursor)
+            if (
+                boundary is None
+                or (entity_type is not None and boundary.entity_type != entity_type)
+                or (entity_id is not None and boundary.entity_id != entity_id)
+            ):
+                raise missing()
+            query = query.where(
+                or_(
+                    AuditEvent.occurred_at < boundary.occurred_at,
+                    (AuditEvent.occurred_at == boundary.occurred_at)
+                    & (AuditEvent.id < boundary.id),
+                )
+            )
         events = session.scalars(
-            query.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc()).limit(limit)
+            query.order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc()).limit(limit + 1)
         ).all()
-        return jsonable_encoder({"items": [admin_record(event) for event in events]})
+        return jsonable_encoder(
+            {
+                "items": [admin_record(event) for event in events[:limit]],
+                "next_cursor": events[limit - 1].id if len(events) > limit else None,
+            }
+        )
 
     return app

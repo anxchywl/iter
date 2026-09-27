@@ -591,6 +591,133 @@ def test_public_submissions_are_disabled_by_default(client, auth, database_url, 
     engine.dispose()
 
 
+def test_admin_queues_and_audit_can_page_past_first_batch(client, auth, database_url):
+    owner = employer(client, auth)
+    item = published(client, auth, owner["id"])
+    review_ids = []
+    report_ids = []
+    for index in range(2):
+        review = client.post(
+            "/api/v1/reviews",
+            json={
+                "request_id": f"aa000000-0000-4000-8000-{index:012d}",
+                "listing_id": item["id"],
+                "season_year": item["season_year"],
+                "role": "Front desk",
+                "pay_match": "unknown",
+                "pay_clarity": "unknown",
+                "hours_match": "unknown",
+                "housing_match": "unknown",
+                "transport_match": "unknown",
+                "self_report_consent": True,
+            },
+        )
+        report = client.post(
+            "/api/v1/reports",
+            json={
+                "request_id": f"bb000000-0000-4000-8000-{index:012d}",
+                "item_type": "listing",
+                "item_id": item["id"],
+                "reason": "inaccurate",
+            },
+        )
+        assert review.status_code == 202
+        assert report.status_code == 202
+        review_ids.append(review.json()["receipt_id"])
+        report_ids.append(report.json()["receipt_id"])
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        moment = datetime.now(UTC)
+        for table, column in (
+            ("reviews", "submitted_at"),
+            ("reports", "submitted_at"),
+            ("audit_events", "occurred_at"),
+        ):
+            connection.execute(text(f"UPDATE {table} SET {column} = :moment"), {"moment": moment})
+    engine.dispose()
+
+    for path, expected in (
+        ("/api/v1/admin/reviews", set(review_ids)),
+        ("/api/v1/admin/reports", set(report_ids)),
+    ):
+        first = client.get(path, headers=auth, params={"limit": 1}).json()
+        second = client.get(
+            path, headers=auth, params={"limit": 1, "cursor": first["next_cursor"]}
+        ).json()
+        assert {first["items"][0]["id"], second["items"][0]["id"]} == expected
+        assert second["next_cursor"] is None
+        assert client.get(path, headers=auth, params={"limit": 101}).status_code == 422
+        assert client.get(path, headers=auth, params={"cursor": "x" * 36}).status_code == 404
+
+    first = client.get("/api/v1/admin/audit", headers=auth, params={"limit": 1}).json()
+    second = client.get(
+        "/api/v1/admin/audit",
+        headers=auth,
+        params={"limit": 1, "cursor": first["next_cursor"]},
+    ).json()
+    assert first["items"][0]["id"] != second["items"][0]["id"]
+
+    rejected = client.post(
+        f"/api/v1/admin/reviews/{review_ids[0]}/reject",
+        headers=auth,
+        json={"expected_version": 1, "reason": "not suitable"},
+    )
+    assert rejected.status_code == 200
+    assert (
+        client.get(
+            "/api/v1/admin/reviews",
+            headers=auth,
+            params={"status": "pending", "cursor": review_ids[0]},
+        ).status_code
+        == 404
+    )
+    listing_event = client.get(
+        "/api/v1/admin/audit", headers=auth, params={"entity_id": item["id"], "limit": 1}
+    ).json()["items"][0]
+    assert (
+        client.get(
+            "/api/v1/admin/audit",
+            headers=auth,
+            params={"entity_id": owner["id"], "cursor": listing_event["id"]},
+        ).status_code
+        == 404
+    )
+
+
+def test_stale_confirmation_queue_pages_with_equal_times(client, auth, database_url):
+    owner = employer(client, auth)
+    listing_ids = {
+        published(client, auth, owner["id"], identifier)["id"] for identifier in ("first", "second")
+    }
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE listings SET last_confirmed_at = :stale"),
+            {"stale": datetime.now(UTC) - timedelta(days=15)},
+        )
+    engine.dispose()
+    path = "/api/v1/admin/listings-needing-confirmation"
+    first = client.get(path, headers=auth, params={"limit": 1}).json()
+    second = client.get(
+        path, headers=auth, params={"limit": 1, "cursor": first["next_cursor"]}
+    ).json()
+    assert {first["items"][0]["id"], second["items"][0]["id"]} == listing_ids
+    assert second["next_cursor"] is None
+    boundary = first["items"][0]
+    refreshed = client.post(
+        f"/api/v1/admin/listings/{boundary['id']}/confirm",
+        headers=auth,
+        json={
+            "expected_version": boundary["version"],
+            "reason": "checked again",
+            "confirmation_source_url": "https://example.com/jobs/role-1",
+        },
+    )
+    assert refreshed.status_code == 200
+    assert client.get(path, headers=auth, params={"cursor": boundary["id"]}).status_code == 404
+
+
 def test_review_migration_preserves_existing_rows(client, auth, database_url):
     owner = employer(client, auth)
     item = published(client, auth, owner["id"])

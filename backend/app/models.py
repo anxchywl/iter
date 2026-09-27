@@ -171,6 +171,7 @@ class Listing(Base):
         Index("ix_listings_public_season_order", "status", "season_year", "published_at", "id"),
         Index("ix_listings_public_location", "status", "season_year", "state", "city", "category"),
         Index("ix_listings_current", "status", "last_confirmed_at"),
+        Index("ix_listings_confirmation_page", "status", "last_confirmed_at", "id"),
         Index("ix_listings_public_dates", "status", "work_start_date", "work_end_date"),
         Index("ix_listings_public_pay", "status", "wage_currency", "wage_basis", "wage_amount"),
     )
@@ -222,6 +223,7 @@ class Review(Base):
         ),
         CheckConstraint("version > 0", name="review_version_positive"),
         Index("ix_reviews_public", "listing_id", "status", "submitted_at"),
+        Index("ix_reviews_queue_page", "status", "submitted_at", "id"),
     )
 
 
@@ -236,7 +238,10 @@ class AuditEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     details: Mapped[dict] = mapped_column(JSON, nullable=False)
 
-    __table_args__ = (Index("ix_audit_entity", "entity_type", "entity_id", "occurred_at"),)
+    __table_args__ = (
+        Index("ix_audit_entity", "entity_type", "entity_id", "occurred_at"),
+        Index("ix_audit_time_page", "occurred_at", "id"),
+    )
 
 
 class Report(Base):
@@ -262,4 +267,5 @@ class Report(Base):
         ),
         CheckConstraint("status IN ('pending', 'resolved', 'dismissed')", name="report_status"),
         Index("ix_reports_queue", "status", "submitted_at"),
+        Index("ix_reports_queue_page", "status", "submitted_at", "id"),
     )
