@@ -1,0 +1,150 @@
+name: iter-directory-local
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7eb701be2227a03e0641
+    environment:
+      POSTGRES_DB: iter_local
+      POSTGRES_USER: iter_local
+      POSTGRES_PASSWORD: ${ITER_DB_PASSWORD:?generate .env.local first}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iter_local -d iter_local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  migrate:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql+psycopg://iter_local:${ITER_DB_PASSWORD}@db:5432/iter_local
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [private]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: "no"
+    logging: *bounded-logging
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql+psycopg://iter_local:${ITER_DB_PASSWORD}@db:5432/iter_local
+      ADMIN_CREDENTIALS_JSON: '{"local-operator":"${ITER_ADMIN_TOKEN:?generate .env.local first}"}'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [private, web]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/listings?page_size=1', timeout=3).close()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    environment:
+      DIRECTORY_API_URL: http://backend:8000
+      DIRECTORY_DEMO_MODE: "false"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [web]
+    ports:
+      - "127.0.0.1:${ITER_WEB_PORT:-3018}:3000"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "Promise.all([fetch('http://127.0.0.1:3000/'),fetch('http://backend:8000/api/v1/listings?page_size=1')]).then(r=>{if(r.some(x=>!x.ok))process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  db-test:
+    profiles: [test]
+    image: postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7eb701be2227a03e0641
+    environment:
+      POSTGRES_DB: iter_test
+      POSTGRES_USER: iter_test
+      POSTGRES_PASSWORD: ${ITER_DB_PASSWORD:?generate .env.local first}
+    tmpfs: [/var/lib/postgresql/data]
+    networks: [test]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iter_test -d iter_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: "no"
+    logging: *bounded-logging
+
+  backend-test:
+    profiles: [test]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      DATABASE_URL: postgresql+psycopg://iter_test:${ITER_DB_PASSWORD}@db-test:5432/iter_test
+      MIGRATION_DATABASE_URL: postgresql+psycopg://iter_test:${ITER_DB_PASSWORD}@db-test:5432/iter_migrations
+      POSTGRES_TEST_URL: postgresql+psycopg://iter_test:${ITER_DB_PASSWORD}@db-test:5432/iter_test
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks: [test, audit]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    logging: *bounded-logging
+
+volumes:
+  postgres-data:
+
+networks:
+  private:
+    internal: true
+  web:
+  test:
+    internal: true
+  audit:

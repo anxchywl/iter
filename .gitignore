@@ -9,3 +9,4 @@ frontend/playwright-report/
 frontend/tsconfig.tsbuildinfo
 frontend/next-env.d.ts
 frontend/.env.local
+.env.local
