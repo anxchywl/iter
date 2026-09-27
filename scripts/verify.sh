@@ -5,7 +5,17 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export COMPOSE_PROGRESS=quiet
 scan_image="ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9"
 docker run --rm --network none -v "$repo_root:/scan:ro" "$scan_image" dir --no-banner --redact --config /scan/.gitleaks.toml /scan
-docker run --rm --network none -v "$repo_root:/scan:ro" "$scan_image" git --no-banner --redact --config /scan/.gitleaks.toml /scan
+git_mounts=(-v "$repo_root:/scan:ro")
+if [[ -f "$repo_root/.git" ]]; then
+  git_common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+  git_mounts+=(-v "$git_common_dir:$git_common_dir:ro")
+fi
+history_scan="$(docker run --rm --network none "${git_mounts[@]}" "$scan_image" git --no-banner --redact --config /scan/.gitleaks.toml /scan 2>&1)"
+printf '%s\n' "$history_scan"
+if [[ ! "$history_scan" =~ [1-9][0-9]*[[:space:]]commits[[:space:]]scanned ]]; then
+  echo "Git history was not scanned" >&2
+  exit 1
+fi
 
 "$repo_root/scripts/local-env.sh"
 export ITER_WEB_PORT=3019
