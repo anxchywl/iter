@@ -78,7 +78,7 @@ services:
       target: runtime
     environment:
       DIRECTORY_API_URL: http://backend:8000
-      DIRECTORY_DEMO_MODE: "false"
+      DIRECTORY_DEMO_MODE: "true"
       FEEDBACK_ENABLED: "true"
     depends_on:
       backend:

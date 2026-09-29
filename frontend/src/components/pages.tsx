@@ -14,6 +14,7 @@ import {
 } from "@/lib/directory";
 import { miniAppLink, safeContact, startListing } from "@/lib/links";
 import { ReportForm, ReviewForm } from "@/components/feedback";
+import { JobFilters } from "@/components/job-filters";
 import {
   Conditions,
   ContactAction,
@@ -23,137 +24,6 @@ import {
   SiteShell,
   TrustFacts,
 } from "@/components/presentation";
-
-function FilterForm({
-  locale,
-  filters,
-}: {
-  locale: Locale;
-  filters: ReturnType<typeof parseFilters>;
-}) {
-  const t = getCopy(locale);
-  return (
-    <form className="filter-panel" method="get" action={localePath(locale)}>
-      <div className="filter-heading">
-        <h2>{t.filters}</h2>
-        <Link href={localePath(locale)}>{t.clear}</Link>
-      </div>
-      <div className="filter-grid">
-        <label className="field wide">
-          <span>{t.search}</span>
-          <input
-            name="q"
-            type="search"
-            maxLength={80}
-            defaultValue={filters.q}
-            placeholder={t.searchPlaceholder}
-          />
-        </label>
-        <label className="field">
-          <span>{t.state}</span>
-          <input name="state" maxLength={80} defaultValue={filters.state} />
-        </label>
-        <label className="field">
-          <span>{t.city}</span>
-          <input name="city" maxLength={120} defaultValue={filters.city} />
-        </label>
-        <label className="field">
-          <span>{t.season}</span>
-          <input
-            name="season"
-            type="number"
-            min="2020"
-            max="2100"
-            defaultValue={filters.season}
-          />
-        </label>
-        <label className="field">
-          <span>{t.category}</span>
-          <input
-            name="category"
-            maxLength={80}
-            defaultValue={filters.category}
-          />
-        </label>
-        <label className="field">
-          <span>{t.startFrom}</span>
-          <input
-            name="start_from"
-            type="date"
-            defaultValue={filters.start_from}
-          />
-        </label>
-        <label className="field">
-          <span>{t.endBy}</span>
-          <input name="end_by" type="date" defaultValue={filters.end_by} />
-        </label>
-        <label className="field">
-          <span>{t.minPay}</span>
-          <input
-            name="min_wage"
-            type="number"
-            min="0"
-            max="99999999"
-            step="0.01"
-            defaultValue={filters.min_wage}
-          />
-        </label>
-        <label className="field">
-          <span>{t.currency}</span>
-          <input
-            name="wage_currency"
-            maxLength={3}
-            pattern="[A-Z]{3}"
-            defaultValue={filters.wage_currency}
-          />
-        </label>
-        <label className="field">
-          <span>{t.payBasis}</span>
-          <select name="wage_basis" defaultValue={filters.wage_basis}>
-            <option value="hour">{t.hour}</option>
-            <option value="day">{t.day}</option>
-            <option value="week">{t.week}</option>
-            <option value="month">{t.month}</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>{t.minHours}</span>
-          <input
-            name="min_hours"
-            type="number"
-            min="0"
-            max="168"
-            step="0.5"
-            defaultValue={filters.min_hours}
-          />
-        </label>
-        <label className="field">
-          <span>{t.housingKnown}</span>
-          <select name="housing_known" defaultValue={filters.housing_known}>
-            <option value="">{t.housingAny}</option>
-            <option value="true">{t.housingKnownOption}</option>
-            <option value="false">{t.housingUnknownOption}</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>{t.freshness}</span>
-          <select
-            name="confirmed_within_days"
-            defaultValue={filters.confirmed_within_days}
-          >
-            <option value="">{t.freshnessAny}</option>
-            <option value="7">{t.freshness7}</option>
-            <option value="3">{t.freshness3}</option>
-          </select>
-        </label>
-      </div>
-      <button className="primary-button" type="submit">
-        {t.apply}
-        <span aria-hidden="true"> →</span>
-      </button>
-    </form>
-  );
-}
 
 export async function DirectoryPage({
   locale,
@@ -187,46 +57,21 @@ export async function DirectoryPage({
   );
   return (
     <SiteShell locale={locale} path={path}>
-      <section className="hero">
-        <div className="hero-inner">
-          <div className="hero-copy">
-            <p className="eyebrow">{t.eyebrow}</p>
-            <h1>{t.directory}</h1>
-            <p>{t.intro}</p>
-            <a className="hero-link" href="#results">
-              {t.browse}
-              <span aria-hidden="true"> ↓</span>
-            </a>
-          </div>
-          <div className="hero-shape" aria-hidden="true">
-            <div className="shape-top">SWT</div>
-            <div className="shape-mid">
-              {t.shapeFind}
-              <br />
-              {t.shapeRead}
-              <br />
-              {t.shapeContact}
-            </div>
-            <div className="shape-bottom">✳ &nbsp; {t.shapeFooter}</div>
-          </div>
-        </div>
-      </section>
       <div className="content-wrap">
-        <FilterForm locale={locale} filters={filters} />
+        <h1 className="feed-title">{t.results}</h1>
+        <JobFilters
+          key={`${locale}:${currentParams}`}
+          locale={locale}
+          filters={filters}
+        />
         <section
           id="results"
           className="results-section"
           aria-labelledby="results-heading"
         >
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">01 / {t.browse}</p>
-              <h2 id="results-heading">{t.results}</h2>
-            </div>
-            {result.kind === "ok" && (
-              <span className="page-indicator">{result.data.page}</span>
-            )}
-          </div>
+          <h2 id="results-heading" className="sr-only">
+            {t.results}
+          </h2>
           {result.kind === "ok" ? (
             result.data.items.length ? (
               <>
@@ -258,9 +103,6 @@ export async function DirectoryPage({
               </>
             ) : (
               <div className="state-panel">
-                <span className="state-icon" aria-hidden="true">
-                  ◇
-                </span>
                 <h3>{hasFilters ? t.noResults : t.noListings}</h3>
                 <p>{hasFilters ? t.noResultsText : t.noListingsText}</p>
                 {hasFilters && <Link href={localePath(locale)}>{t.clear}</Link>}
@@ -280,16 +122,6 @@ export async function DirectoryPage({
               )}
             </div>
           )}
-        </section>
-        <section className="explain-section">
-          <span className="explain-mark" aria-hidden="true">
-            ✳
-          </span>
-          <div>
-            <p className="eyebrow">02 / iter</p>
-            <h2>{t.howItWorks}</h2>
-            <p>{t.howText}</p>
-          </div>
         </section>
       </div>
     </SiteShell>
@@ -393,7 +225,6 @@ export async function DetailPage({
               className="detail-section"
               aria-labelledby="conditions-heading"
             >
-              <p className="eyebrow">01 / {t.conditions}</p>
               <h2 id="conditions-heading">{t.conditions}</h2>
               <Conditions listing={listing} locale={locale} />
               <div className="duties">
@@ -427,7 +258,6 @@ export async function DetailPage({
             )}
           </div>
           <aside className="evidence-panel" aria-labelledby="evidence-heading">
-            <p className="eyebrow">02 / {t.evidence}</p>
             <h2 id="evidence-heading">{t.evidence}</h2>
             <TrustFacts listing={listing} locale={locale} />
             <div className="evidence-links">

@@ -10,16 +10,44 @@ const copy = {
     shapeRead: "READ",
     shapeContact: "CONTACT",
     shapeFooter: "ITER DIRECTORY",
+    heroGuide: "Explore the directory",
+    navHow: "How it works",
+    navTrust: "What to check",
+    backToTop: "Back to top",
+    viewDetails: "View details",
+    footerExplore: "Explore",
+    footerProject: "Project",
+    sourceCode: "Source repository",
+    repositoryPrivate: "Private for now; access requires permission.",
+    moreFilters: "More filters",
+    stepFind: "Find a role",
+    stepFindText:
+      "Search the current season and narrow the details that matter to you.",
+    stepCheck: "Check the details",
+    stepCheckText:
+      "Read the conditions, source, and separate trust facts on each vacancy.",
+    stepContact: "Contact directly",
+    stepContactText:
+      "See the destination before opening the employer's own contact link.",
+    trustHeading: "What we know",
+    trustIntro:
+      "Each vacancy shows its source and when the exact job was last confirmed.",
+    trustFresh:
+      "A confirmation older than 14 days removes a job from current results.",
+    trustSponsor:
+      "Employer identity, an open vacancy, a sponsor route, and sponsor approval are separate facts.",
+    trustContact:
+      "The directory does not submit an application or make a sponsor decision for you.",
     directory: "Summer jobs, with the details in view",
     intro:
       "Explore employer listings for a Summer Work Travel season. Read the conditions and evidence, then contact the employer yourself.",
     browse: "Browse vacancies",
-    howItWorks: "How this directory works",
+    howItWorks: "Three steps",
     howText:
       "Listings are maintained by the directory. Employer contact opens outside this site. A listed job is not a sponsor decision or a job offer to you.",
     search: "Search jobs or employers",
     searchPlaceholder: "Role or employer",
-    filters: "Filter vacancies",
+    filters: "Filters",
     state: "State",
     city: "City",
     season: "Season",
@@ -40,7 +68,7 @@ const copy = {
     freshness3: "Within 3 days",
     apply: "Show results",
     clear: "Clear filters",
-    results: "Current vacancies",
+    results: "Vacancies",
     noListings: "No current vacancies yet",
     noListingsText:
       "Check back after new employer confirmations are published.",
@@ -154,11 +182,38 @@ const copy = {
     shapeRead: "ИЗУЧИТЬ",
     shapeContact: "СВЯЗАТЬСЯ",
     shapeFooter: "КАТАЛОГ ITER",
+    heroGuide: "Разделы каталога",
+    navHow: "Как это работает",
+    navTrust: "Что проверить",
+    backToTop: "Наверх",
+    viewDetails: "Подробнее",
+    footerExplore: "Разделы",
+    footerProject: "Проект",
+    sourceCode: "Репозиторий проекта",
+    repositoryPrivate: "Пока закрытый; нужен доступ.",
+    moreFilters: "Больше фильтров",
+    stepFind: "Найдите вакансию",
+    stepFindText: "Выберите сезон и условия, которые важны именно вам.",
+    stepCheck: "Проверьте детали",
+    stepCheckText:
+      "Изучите условия, источник и отдельные статусы каждой вакансии.",
+    stepContact: "Свяжитесь напрямую",
+    stepContactText:
+      "Перед переходом вы увидите, куда ведёт ссылка работодателя.",
+    trustHeading: "Что известно",
+    trustIntro:
+      "У каждой вакансии указан источник и дата последнего подтверждения именно этой работы.",
+    trustFresh:
+      "Через 14 дней без нового подтверждения вакансия исчезает из актуальных результатов.",
+    trustSponsor:
+      "Проверка работодателя, открытая вакансия, маршрут через спонсора и одобрение спонсора — разные факты.",
+    trustContact:
+      "Каталог не подаёт заявку за вас и не принимает решения за спонсора.",
     directory: "Летняя работа: условия на виду",
     intro:
       "Изучайте вакансии работодателей для сезона Summer Work Travel. Проверьте условия и источники, затем свяжитесь с работодателем напрямую.",
     browse: "Смотреть вакансии",
-    howItWorks: "Как работает каталог",
+    howItWorks: "Три шага",
     howText:
       "Каталог поддерживает объявления. Контакт с работодателем происходит вне сайта. Публикация не означает решение спонсора или предложение работы лично вам.",
     search: "Поиск по вакансии или работодателю",
@@ -184,7 +239,7 @@ const copy = {
     freshness3: "За 3 дня",
     apply: "Показать",
     clear: "Сбросить фильтры",
-    results: "Актуальные вакансии",
+    results: "Вакансии",
     noListings: "Пока нет актуальных вакансий",
     noListingsText:
       "Новые объявления появятся после подтверждения работодателем.",
@@ -297,11 +352,38 @@ const copy = {
     shapeRead: "ОҚУ",
     shapeContact: "ХАБАРЛАСУ",
     shapeFooter: "ITER КАТАЛОГЫ",
+    heroGuide: "Каталог бөлімдері",
+    navHow: "Қалай жұмыс істейді",
+    navTrust: "Нені тексеру керек",
+    backToTop: "Жоғарыға",
+    viewDetails: "Толығырақ",
+    footerExplore: "Бөлімдер",
+    footerProject: "Жоба",
+    sourceCode: "Жобаның репозиторийі",
+    repositoryPrivate: "Әзірге жабық; кіру үшін рұқсат керек.",
+    moreFilters: "Қосымша сүзгілер",
+    stepFind: "Бос орынды табыңыз",
+    stepFindText: "Маусымды және өзіңізге маңызды шарттарды таңдаңыз.",
+    stepCheck: "Мәліметтерді тексеріңіз",
+    stepCheckText:
+      "Әр бос орынның шарттарын, дереккөзін және бөлек мәртебелерін қараңыз.",
+    stepContact: "Тікелей хабарласыңыз",
+    stepContactText:
+      "Жұмыс берушінің сілтемесін ашпас бұрын оның қайда апаратынын көресіз.",
+    trustHeading: "Не белгілі",
+    trustIntro:
+      "Әр бос орында дереккөз және дәл осы жұмыстың соңғы расталған күні көрсетіледі.",
+    trustFresh:
+      "14 күн ішінде қайта расталмаған бос орын қазіргі нәтижелерден алынады.",
+    trustSponsor:
+      "Жұмыс берушіні тексеру, ашық бос орын, демеуші бағыты және демеушінің мақұлдауы — бөлек деректер.",
+    trustContact:
+      "Каталог сіздің атыңыздан өтініш бермейді және демеушінің орнына шешім қабылдамайды.",
     directory: "Жазғы жұмыс: шарттары анық көрсетілген",
     intro:
       "Summer Work Travel маусымына арналған жұмыс берушілердің бос орындарын қараңыз. Шарттары мен дереккөздерін тексеріп, жұмыс берушіге өзіңіз хабарласыңыз.",
     browse: "Бос орындарды қарау",
-    howItWorks: "Каталог қалай жұмыс істейді",
+    howItWorks: "Үш қадам",
     howText:
       "Каталог хабарландыруларды жүргізеді. Жұмыс берушімен байланыс осы сайттан тыс жерде өтеді. Жарияланым демеушінің шешімі немесе сізге жасалған жұмыс ұсынысы емес.",
     search: "Жұмыс не жұмыс беруші бойынша іздеу",
@@ -327,7 +409,7 @@ const copy = {
     freshness3: "3 күн ішінде",
     apply: "Нәтижелерді көрсету",
     clear: "Сүзгілерді тазалау",
-    results: "Қазіргі бос орындар",
+    results: "Бос орындар",
     noListings: "Әзірге қазіргі бос орындар жоқ",
     noListingsText:
       "Жаңа хабарландырулар жұмыс беруші растағаннан кейін шығады.",

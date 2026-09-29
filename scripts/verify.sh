@@ -49,6 +49,8 @@ fi
 
 "${compose[@]}" up -d --wait frontend
 curl --fail --silent --show-error "http://127.0.0.1:$ITER_WEB_PORT/" >/dev/null
+ITER_COMPOSE_PROJECT=iter-directory-check "$repo_root/scripts/local-seed.sh"
+ITER_COMPOSE_PROJECT=iter-directory-check "$repo_root/scripts/local-seed.sh" | grep -q "nothing to add"
 
 cd "$repo_root/frontend"
 npm ci

@@ -8,14 +8,16 @@ test("mobile localized search and no-results state fit without overflow", async 
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/ru");
   await expect(
-    page.getByRole("heading", { name: "Летняя работа: условия на виду" }),
+    page.getByRole("heading", { name: "Вакансии", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(
     page.getByText("Локальные тестовые данные — не действующие вакансии"),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Front desk assistant", exact: true }),
+    page.locator(".listing-link").filter({ hasText: "Front desk assistant" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Фильтры" }).click();
+  await expect(page.getByRole("dialog", { name: "Фильтры" })).toBeVisible();
   await page.getByLabel("Город").fill("Missing City");
   await page.getByRole("button", { name: /Показать/ }).click();
   await expect(
@@ -24,6 +26,73 @@ test("mobile localized search and no-results state fit without overflow", async 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
+});
+
+test("job finder keeps search, filters, and detail in one flow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/ru");
+  await page.getByRole("button", { name: "Фильтры" }).click();
+  const filters = page.getByRole("dialog", { name: "Фильтры" });
+  await expect(filters).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(filters).not.toBeVisible();
+  await page
+    .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
+    .fill("Front desk");
+  await page.getByRole("button", { name: "Фильтры" }).click();
+  await filters.getByLabel("Город").fill("Albany");
+  await filters.getByRole("button", { name: "Показать" }).click();
+  await expect(page).toHaveURL(/city=Albany/);
+  expect(new URL(page.url()).searchParams.get("q")).toBe("Front desk");
+  await expect(page.getByRole("button", { name: /Фильтры.*1/ })).toBeVisible();
+  await page
+    .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
+    .fill("assistant");
+  await page
+    .getByRole("button", { name: "Поиск по вакансии или работодателю" })
+    .click();
+  await expect(page).toHaveURL(/city=Albany/);
+  expect(new URL(page.url()).searchParams.get("q")).toBe("assistant");
+  await page.locator(".listing-link").click();
+  await expect(page).toHaveURL(new RegExp(`/ru/jobs/${id}$`));
+  await expect(
+    page.getByRole("heading", { name: "Front desk assistant" }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: /К вакансиям/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/ru$/);
+  await page.getByRole("link", { name: "ҚАЗ" }).click();
+  await expect(page).toHaveURL(/\/kk$/);
+  await page.getByRole("link", { name: "РУС" }).click();
+  await expect(page).toHaveURL(/\/ru$/);
+  await expect(page.locator(".brand").first()).toHaveText("iter");
+  expect((await page.request.get("/icon.svg")).status()).toBe(200);
+  await expect(
+    page.getByRole("link", { name: "Репозиторий проекта" }),
+  ).toHaveAttribute("href", "https://github.com/anxchywl/iter");
+  await expect(page.getByText("Пока закрытый; нужен доступ.")).toBeVisible();
+  expect(
+    await page
+      .getByRole("heading", { level: 1 })
+      .evaluate((heading) => getComputedStyle(heading).textWrap),
+  ).toBe("balance");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
+});
+
+test("reduced motion uses immediate section scrolling", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  expect(
+    await page.evaluate(
+      () => getComputedStyle(document.documentElement).scrollBehavior,
+    ),
+  ).toBe("auto");
 });
 
 test("detail shows distinct trust facts and contact destination before leaving", async ({
