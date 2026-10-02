@@ -18,7 +18,7 @@ export function SiteShell({
   const t = getCopy(locale);
   const telegram = miniAppLink();
   return (
-    <>
+    <div className="app-shell">
       <a className="skip-link" href="#main">
         {t.skip}
       </a>
@@ -32,19 +32,8 @@ export function SiteShell({
             href={localePath(locale)}
             aria-label={`${t.brand} — ${t.browse}`}
           >
-            <span className="brand-mark" aria-hidden="true">
-              ✳
-            </span>{" "}
-            {t.brand}
+            <span className="brand-initial">i</span>ter
           </Link>
-          <nav className="main-nav" aria-label={t.browse}>
-            <Link href={localePath(locale)}>{t.browse}</Link>
-            {telegram && (
-              <a href={telegram} target="_blank" rel="noopener noreferrer">
-                {t.telegram}
-              </a>
-            )}
-          </nav>
           <nav className="language-nav" aria-label={t.language}>
             {locales.map((target) => (
               <Link
@@ -63,11 +52,32 @@ export function SiteShell({
       <main id="main">{children}</main>
       <footer className="site-footer">
         <div className="footer-inner">
-          <strong>{t.brand}</strong>
-          <p>{t.howText}</p>
+          <div className="footer-bottom">
+            <span>
+              © {new Date().getFullYear()} {t.brand}
+            </span>
+            <a
+              href="https://github.com/anxchywl/iter"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t.sourceCode}
+            </a>
+          </div>
+          <small>{t.repositoryPrivate}</small>
+          {telegram && (
+            <a
+              className="telegram-launch"
+              href={telegram}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t.telegram}
+            </a>
+          )}
         </div>
       </footer>
-    </>
+    </div>
   );
 }
 
@@ -254,32 +264,40 @@ export function ListingCard({
   const t = getCopy(locale);
   return (
     <article className="listing-card">
-      <div className="card-top">
-        <span className="season-tag">{listing.season_year}</span>
-        <span>{plainText(listing.category)}</span>
-      </div>
-      <h3>
-        <Link href={localePath(locale, `/jobs/${listing.id}`)}>
-          {plainText(listing.role)}
-        </Link>
-      </h3>
-      <p className="employer-line">
-        {plainText(listing.employer_legal_name)} · {plainText(listing.city)},{" "}
-        {plainText(listing.state)}
-      </p>
-      <span className="source-note">{t.fromEmployer}</span>
-      <Conditions listing={listing} locale={locale} compact />
-      <div className="card-footer">
-        <span>
+      <Link
+        className="listing-link"
+        href={localePath(locale, `/jobs/${listing.id}`)}
+      >
+        <div className="listing-summary">
+          <span className="listing-employer">
+            {plainText(listing.employer_legal_name)}
+          </span>
+          <h3>{plainText(listing.role)}</h3>
+          <span className="listing-location">
+            {plainText(listing.city)}, {plainText(listing.state)} ·{" "}
+            {listing.season_year}
+          </span>
+        </div>
+        <strong className="listing-pay">
+          {amount(
+            listing.wage_amount,
+            listing.wage_currency,
+            listing.wage_basis,
+            t,
+          )}
+        </strong>
+        <span className="listing-extra">
+          {t.housing}: {plainText(listing.housing_description) || t.unknown}
+        </span>
+        <span className="listing-extra">
+          {t.dates}: {formattedDate(listing.work_start_date, locale, t)}
+          {" – "}
+          {formattedDate(listing.work_end_date, locale, t)}
+        </span>
+        <span className="listing-confirmed">
           {t.confirmed} {formattedDate(listing.last_confirmed_at, locale, t)}
         </span>
-        <Link
-          href={localePath(locale, `/jobs/${listing.id}`)}
-          aria-label={`${t.conditions}: ${plainText(listing.role)}`}
-        >
-          →
-        </Link>
-      </div>
+      </Link>
     </article>
   );
 }
@@ -296,10 +314,7 @@ export function ContactAction({
   if (!link) return <p className="notice">{t.unsafeContact}</p>;
   return (
     <details className="contact-action">
-      <summary>
-        {t.directContact}
-        <span aria-hidden="true"> ↗</span>
-      </summary>
+      <summary>{t.directContact}</summary>
       <div className="contact-reveal">
         <p>{t.contactIntro}</p>
         <p className="destination" dir="ltr">
