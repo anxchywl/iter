@@ -13,6 +13,7 @@ Same-origin `/api/feedback/reviews` and `/api/feedback/reports` forward bounded 
 ## Verification and CI
 
 Run `./scripts/verify.sh` from the repository root. It scans source and Git history for secrets, validates Compose, builds the backend and frontend images, migrates an empty disposable database and checks Alembic's head, runs Ruff and backend tests against PostgreSQL, rehearses a database dump and restore, audits locked Python dependencies, starts the local stack and checks its health, then runs locked npm installation, formatting, type checks, unit/component tests, a production build, Playwright smoke tests, and an npm vulnerability audit. The script uses the separate `iter-directory-check` Compose project and localhost port 3019, then removes only its disposable containers and volumes. It does not remove the normal local volume. CI runs this same script on pull requests and pushes to `main` with read-only repository permission and pinned action commits.
+Set `PLAYWRIGHT_PORT` to a free local port when running Playwright while the normal Compose frontend is using 3018.
 
 The regression floor is behavioral: backend API/auth/lifecycle tests, frontend component tests, and browser flows for browsing, detail, filters, stale status, direct-contact safety, and narrow viewport. There is no percentage coverage gate. Playwright uses fictional local data. A real Telegram client launch, TLS ingress, and production rate limits remain unverified.
 
