@@ -11,7 +11,7 @@ Docker and Compose are required.
 docker compose --env-file .env.local -f compose.local.yaml up --build --wait
 ```
 
-Open [http://127.0.0.1:3018](http://127.0.0.1:3018). Stop this stack with `docker compose --env-file .env.local -f compose.local.yaml down`.
+Run `./scripts/local-seed.sh` to add fictional listings. Open [http://127.0.0.1:3018](http://127.0.0.1:3018). Stop this stack with `docker compose --env-file .env.local -f compose.local.yaml down`.
 
 ## Check
 
