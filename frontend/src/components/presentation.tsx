@@ -321,7 +321,7 @@ export function ListingCard({
         <span className="listing-confirmed">
           {t.confirmed} {formattedDate(listing.last_confirmed_at, locale, t)}
         </span>
-        <LinkPending />
+        <LinkPending skeleton="detail" />
       </Link>
     </article>
   );

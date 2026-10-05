@@ -93,7 +93,7 @@ export async function DirectoryPage({
                     >
                       <ChevronIcon direction="left" />
                       {t.previous}
-                      <LinkPending />
+                      <LinkPending skeleton="list" />
                     </Link>
                   )}
                   {result.data.has_more && (
@@ -102,7 +102,7 @@ export async function DirectoryPage({
                     >
                       {t.next}
                       <ChevronIcon direction="right" />
-                      <LinkPending />
+                      <LinkPending skeleton="list" />
                     </Link>
                   )}
                 </nav>
@@ -155,7 +155,7 @@ export async function DetailPage({
           <Link className="back-link" href={localePath(locale)}>
             <ChevronIcon direction="left" />
             {t.back}
-            <LinkPending />
+            <LinkPending skeleton="list" />
           </Link>
           <div className="state-panel" role={missing ? undefined : "alert"}>
             <span className="state-icon" aria-hidden="true">
@@ -201,7 +201,7 @@ export async function DetailPage({
         <Link className="back-link" href={localePath(locale)}>
           <ChevronIcon direction="left" />
           {t.back}
-          <LinkPending />
+          <LinkPending skeleton="list" />
         </Link>
         <div className="detail-head">
           <div>

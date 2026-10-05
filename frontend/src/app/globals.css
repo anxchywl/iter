@@ -777,11 +777,62 @@ p {
 .listing-link:has(.link-pending[data-pending]) {
   background: var(--mint);
 }
-.language-nav a:has(.link-pending[data-pending]) {
-  animation: link-pulse 0.9s ease-in-out infinite;
-}
-.language-nav .link-pending[data-pending] {
+.language-switch .link-pending[data-pending] {
   display: none;
+}
+.route-skeleton {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  background: var(--paper);
+  animation: skeleton-in 0.24s ease 0.12s both;
+}
+.skeleton-page {
+  display: grid;
+  gap: 0.75rem;
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: calc(56px + 1.1rem) 1rem 1rem;
+}
+.skeleton-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.skeleton-row {
+  display: flex;
+  gap: 0.4rem;
+}
+.skeleton-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+.skeleton-grid > div {
+  display: grid;
+  gap: 0.4rem;
+}
+.skeleton-bar {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #edf2ee 25%, #f7faf7 50%, #edf2ee 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes skeleton-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 @keyframes link-spin {
   to {
