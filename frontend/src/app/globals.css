@@ -229,7 +229,7 @@ p {
   font-size: 0.62rem;
   font-weight: 700;
 }
-.filter-dialog {
+.sheet {
   position: fixed;
   inset: auto 0 var(--keyboard, 0px);
   width: min(100%, 620px);
@@ -252,20 +252,20 @@ p {
   transform: translateY(100%);
   transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.filter-dialog:focus {
+.sheet:focus {
   outline: 0;
 }
-.filter-dialog[data-visible] {
+.sheet[data-visible] {
   transform: translateY(0);
 }
-.filter-dialog[data-dragging] {
+.sheet[data-dragging] {
   transition: none;
 }
-.filter-dialog::backdrop {
+.sheet::backdrop {
   background: rgba(15, 31, 25, 0);
   transition: background 0.28s ease;
 }
-.filter-dialog[data-visible]::backdrop {
+.sheet[data-visible]::backdrop {
   background: rgba(15, 31, 25, 0.42);
 }
 .sheet-grab {
@@ -302,16 +302,18 @@ p {
 .filter-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
+  gap: 0.3rem 0.8rem;
   padding: 0.35rem 1rem 1rem;
 }
 .filter-fields[hidden] {
   display: none;
 }
-.filter-fields label,
-.date-field {
+.filter-fields > [data-field] {
   display: grid;
-  gap: 0.3rem;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  row-gap: 0.3rem;
+  align-content: end;
   min-width: 0;
   color: var(--muted);
   font-size: 0.73rem;
@@ -319,7 +321,7 @@ p {
 }
 .filter-fields input,
 .filter-fields select,
-.date-field button {
+.picker-field button {
   width: 100%;
   min-width: 0;
   height: 39px;
@@ -333,12 +335,12 @@ p {
 }
 .filter-fields input:focus,
 .filter-fields select:focus,
-.date-field button:focus-visible {
+.picker-field button:focus-visible {
   border-color: var(--teal);
   outline: 0;
   box-shadow: 0 0 0 3px rgba(31, 105, 93, 0.14);
 }
-.date-field button {
+.picker-field button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -346,10 +348,24 @@ p {
   text-align: left;
   cursor: pointer;
 }
-.date-field button span[data-empty] {
+.picker-field button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-field button span,
+.choice-label {
+  display: block;
+}
+.picker-field button span::first-letter,
+.choice-label::first-letter {
+  text-transform: uppercase;
+}
+.picker-field button span[data-empty] {
   color: #86948d;
 }
-.date-field svg {
+.picker-field svg {
   flex: none;
   width: 17px;
   height: 17px;
@@ -392,6 +408,58 @@ p {
 }
 .calendar {
   padding: 0.2rem 1rem 0.9rem;
+}
+.choice-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.2rem 1rem 0.9rem;
+}
+.choice-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 50px;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: 14px;
+  background: #f6f8f6;
+  color: var(--ink);
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.12s ease;
+}
+.choice-list button:active {
+  transform: scale(0.98);
+}
+.choice-list button svg {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  color: var(--teal);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.choice-list button[aria-pressed="true"] {
+  background: var(--mint);
+  color: var(--teal-deep);
+  font-weight: 700;
+}
+.choice-list button[aria-pressed="true"] svg {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: hover) {
+  .choice-list button:hover {
+    background: var(--mint);
+  }
 }
 .calendar-head {
   display: grid;

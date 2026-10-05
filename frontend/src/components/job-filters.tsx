@@ -1,20 +1,22 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getCopy, intlLocale, localePath, type Locale } from "@/lib/copy";
 import type { SearchFilters } from "@/lib/directory";
 import { useFocusMode } from "@/lib/focus-mode";
-import { morph, reducedMotion } from "@/lib/motion";
+import { morph } from "@/lib/motion";
 import { Calendar } from "@/components/calendar";
 import { FocusDone } from "@/components/focus-done";
+import { Sheet, useSheet } from "@/components/sheet";
 
 type DateKey = "start_from" | "end_by";
+type ChoiceKey = "wage_basis" | "housing_known" | "confirmed_within_days";
+type Panel = DateKey | ChoiceKey;
+
+function isDate(panel: Panel): panel is DateKey {
+  return panel === "start_from" || panel === "end_by";
+}
 
 export function JobFilters({
   locale,
@@ -24,17 +26,21 @@ export function JobFilters({
   filters: SearchFilters;
 }) {
   const t = getCopy(locale);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const title = useRef<HTMLHeadingElement>(null);
+  const sheet = useSheet();
+  const dialog = sheet.ref;
   const tools = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState(filters.q);
   const [dates, setDates] = useState<Record<DateKey, string>>({
     start_from: filters.start_from,
     end_by: filters.end_by,
   });
-  const [calendar, setCalendar] = useState<DateKey | null>(null);
+  const [choices, setChoices] = useState<Record<ChoiceKey, string>>({
+    wage_basis: filters.wage_basis || "hour",
+    housing_known: filters.housing_known,
+    confirmed_within_days: filters.confirmed_within_days,
+  });
+  const [panel, setPanel] = useState<Panel | null>(null);
   useFocusMode(tools);
-  useFocusMode(dialog, dialog);
   const activeCount = [
     filters.state,
     filters.city,
@@ -47,9 +53,30 @@ export function JobFilters({
     filters.housing_known,
     filters.confirmed_within_days,
   ].filter(Boolean).length;
-  const dateLabels: Record<DateKey, string> = {
+  const labels: Record<Panel, string> = {
     start_from: t.startFrom,
     end_by: t.endBy,
+    wage_basis: t.payBasis,
+    housing_known: t.housingKnown,
+    confirmed_within_days: t.freshness,
+  };
+  const options: Record<ChoiceKey, [string, string][]> = {
+    wage_basis: [
+      ["hour", t.hour],
+      ["day", t.day],
+      ["week", t.week],
+      ["month", t.month],
+    ],
+    housing_known: [
+      ["", t.housingAny],
+      ["true", t.housingKnownOption],
+      ["false", t.housingUnknownOption],
+    ],
+    confirmed_within_days: [
+      ["", t.freshnessAny],
+      ["7", t.freshness7],
+      ["3", t.freshness3],
+    ],
   };
   const shortDate = new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
@@ -58,63 +85,27 @@ export function JobFilters({
     timeZone: "UTC",
   });
 
-  useEffect(() => {
-    // the sheet opens on its title so a phone keyboard stays closed
-    title.current?.setAttribute("autofocus", "");
-  }, []);
-
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    const node = dialog.current;
-    if (!viewport || !node) return;
-    const update = () =>
-      node.style.setProperty(
-        "--keyboard",
-        `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`,
-      );
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => {
-      viewport.removeEventListener("resize", update);
-      viewport.removeEventListener("scroll", update);
-    };
-  }, []);
-
-  function openSheet() {
-    const node = dialog.current;
-    if (!node || node.open) return;
-    node.showModal();
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        node.dataset.visible = "";
-      }),
-    );
+  function focusPanelField(key: Panel) {
+    dialog.current
+      ?.querySelector<HTMLButtonElement>(`[data-panel-field="${key}"]`)
+      ?.focus();
   }
 
-  function closeSheet() {
-    const node = dialog.current;
-    if (!node?.open || "closing" in node.dataset) return;
-    node.dataset.closing = "";
-    delete node.dataset.visible;
-    window.setTimeout(() => node.close(), reducedMotion() ? 0 : 340);
-  }
-
-  function showCalendar(key: DateKey | null) {
-    const returning = calendar;
-    morph(dialog.current, () => flushSync(() => setCalendar(key)));
-    if (!key && returning)
-      dialog.current
-        ?.querySelector<HTMLButtonElement>(`[data-date-field="${returning}"]`)
-        ?.focus();
+  function showPanel(key: Panel | null) {
+    const returning = panel;
+    morph(dialog.current, () => flushSync(() => setPanel(key)));
+    if (!key && returning) focusPanelField(returning);
     else if (key)
       dialog.current
-        ?.querySelector<HTMLButtonElement>(".calendar-grid [tabindex='0']")
+        ?.querySelector<HTMLButtonElement>(
+          isDate(key)
+            ? ".calendar-grid [tabindex='0']"
+            : ".choice-list [aria-pressed='true']",
+        )
         ?.focus();
   }
 
   function chooseDate(key: DateKey, value: string) {
-    const returning = key;
     morph(dialog.current, () =>
       flushSync(() => {
         setDates((current) => ({
@@ -127,39 +118,62 @@ export function JobFilters({
             ? { end_by: "" }
             : {}),
         }));
-        setCalendar(null);
+        setPanel(null);
       }),
     );
-    dialog.current
-      ?.querySelector<HTMLButtonElement>(`[data-date-field="${returning}"]`)
-      ?.focus();
+    focusPanelField(key);
   }
 
-  function startDrag(event: ReactPointerEvent<HTMLElement>) {
-    const node = dialog.current;
-    if (!node || event.button !== 0) return;
-    const handle = event.currentTarget;
-    const startY = event.clientY;
-    const startTime = performance.now();
-    let distance = 0;
-    handle.setPointerCapture(event.pointerId);
-    node.dataset.dragging = "";
-    const move = (moveEvent: PointerEvent) => {
-      distance = Math.max(0, moveEvent.clientY - startY);
-      node.style.transform = `translateY(${distance}px)`;
-    };
-    const end = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", end);
-      handle.removeEventListener("pointercancel", end);
-      delete node.dataset.dragging;
-      node.style.removeProperty("transform");
-      const speed = distance / Math.max(1, performance.now() - startTime);
-      if (distance > 90 || (distance > 24 && speed > 0.6)) closeSheet();
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", end);
-    handle.addEventListener("pointercancel", end);
+  function chooseOption(key: ChoiceKey, value: string) {
+    morph(dialog.current, () =>
+      flushSync(() => {
+        setChoices((current) => ({ ...current, [key]: value }));
+        setPanel(null);
+      }),
+    );
+    focusPanelField(key);
+  }
+
+  function pickerField(key: Panel, value: string, icon: "date" | "choice") {
+    return (
+      <div className="picker-field" data-field data-morph key={key}>
+        <span id={`${key}-label`}>{labels[key]}</span>
+        <button
+          type="button"
+          data-panel-field={key}
+          aria-labelledby={`${key}-label ${key}-value`}
+          onClick={() => showPanel(key)}
+        >
+          <span id={`${key}-value`} data-empty={!value || undefined}>
+            {icon === "date"
+              ? value
+                ? shortDate.format(new Date(`${value}T00:00:00Z`))
+                : t.anyDate
+              : options[key as ChoiceKey].find(
+                  ([option]) => option === value,
+                )?.[1]}
+          </span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {icon === "date" ? (
+              <>
+                <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+                <path d="M4 10h16M8.5 3.5v4m7-4v4" />
+              </>
+            ) : (
+              <path d="m7 10 5 5 5-5" />
+            )}
+          </svg>
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -235,7 +249,7 @@ export function JobFilters({
           type="button"
           aria-label={activeCount ? `${t.filters}: ${activeCount}` : t.filters}
           aria-haspopup="dialog"
-          onClick={openSheet}
+          onClick={sheet.open}
           data-focus-hide
         >
           <svg
@@ -251,71 +265,88 @@ export function JobFilters({
           {activeCount > 0 && <span aria-hidden="true">{activeCount}</span>}
         </button>
       </div>
-      <dialog
+      <Sheet
+        sheet={sheet}
         className="filter-dialog"
-        ref={dialog}
-        aria-labelledby="filter-title"
-        onClick={(event) => {
-          if (event.target === dialog.current) closeSheet();
+        titleId="filter-title"
+        title={panel ? labels[panel] : t.filters}
+        onEscape={() => {
+          if (!panel) return false;
+          showPanel(null);
+          return true;
         }}
-        onCancel={(event) => {
-          event.preventDefault();
-          if (calendar) showCalendar(null);
-          else closeSheet();
-        }}
-        onClose={() => {
-          const node = dialog.current;
-          if (!node) return;
-          delete node.dataset.closing;
-          delete node.dataset.visible;
-          setCalendar(null);
-        }}
+        onClosed={() => setPanel(null)}
       >
-        <div className="sheet-grab" onPointerDown={startDrag}>
-          <div className="sheet-handle" aria-hidden="true" />
-          <h2
-            id="filter-title"
-            tabIndex={-1}
-            ref={title}
-            data-focus-hide
-            data-morph
-          >
-            {calendar ? dateLabels[calendar] : t.filters}
-          </h2>
-        </div>
         <form action={localePath(locale)} method="get">
           <input type="hidden" name="q" value={query} />
           <input type="hidden" name="start_from" value={dates.start_from} />
           <input type="hidden" name="end_by" value={dates.end_by} />
-          {calendar && (
-            <>
-              <Calendar
-                key={calendar}
-                locale={locale}
-                value={dates[calendar]}
-                min={calendar === "end_by" ? dates.start_from : undefined}
-                onSelect={(value) => chooseDate(calendar, value)}
-              />
-              <div className="filter-actions" data-morph>
+          {(Object.keys(choices) as ChoiceKey[]).map((key) => (
+            <input key={key} type="hidden" name={key} value={choices[key]} />
+          ))}
+          {panel && isDate(panel) && (
+            <Calendar
+              key={panel}
+              locale={locale}
+              value={dates[panel]}
+              min={panel === "end_by" ? dates.start_from : undefined}
+              onSelect={(value) => chooseDate(panel, value)}
+            />
+          )}
+          {panel && !isDate(panel) && (
+            <div
+              className="choice-list"
+              role="group"
+              aria-labelledby="filter-title"
+              data-morph
+            >
+              {options[panel].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={choices[panel] === value}
+                  onClick={() => chooseOption(panel, value)}
+                >
+                  <span className="choice-label">{label}</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m5 12.5 4.5 4.5L19 7.5" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+          {panel && (
+            <div className="filter-actions" data-morph>
+              {isDate(panel) ? (
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() => chooseDate(calendar, "")}
-                  disabled={!dates[calendar]}
+                  onClick={() => chooseDate(panel, "")}
+                  disabled={!dates[panel]}
                 >
                   {t.clearDate}
                 </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => showCalendar(null)}
-                >
-                  {t.calendarBack}
-                </button>
-              </div>
-            </>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => showPanel(null)}
+              >
+                {t.calendarBack}
+              </button>
+            </div>
           )}
-          <div className="filter-fields" hidden={Boolean(calendar)}>
+          <div className="filter-fields" hidden={Boolean(panel)}>
             <label data-field data-morph>
               {t.state}
               <input name="state" maxLength={80} defaultValue={filters.state} />
@@ -343,37 +374,8 @@ export function JobFilters({
                 defaultValue={filters.category}
               />
             </label>
-            {(["start_from", "end_by"] as const).map((key) => (
-              <div className="date-field" data-field data-morph key={key}>
-                <span id={`${key}-label`}>{dateLabels[key]}</span>
-                <button
-                  type="button"
-                  data-date-field={key}
-                  aria-labelledby={`${key}-label ${key}-value`}
-                  onClick={() => showCalendar(key)}
-                >
-                  <span
-                    id={`${key}-value`}
-                    data-empty={!dates[key] || undefined}
-                  >
-                    {dates[key]
-                      ? shortDate.format(new Date(`${dates[key]}T00:00:00Z`))
-                      : t.anyDate}
-                  </span>
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
-                    <path d="M4 10h16M8.5 3.5v4m7-4v4" />
-                  </svg>
-                </button>
-              </div>
-            ))}
+            {pickerField("start_from", dates.start_from, "date")}
+            {pickerField("end_by", dates.end_by, "date")}
             <label data-field data-morph>
               {t.minPay}
               <input
@@ -396,15 +398,7 @@ export function JobFilters({
                 defaultValue={filters.wage_currency}
               />
             </label>
-            <label data-field data-morph>
-              {t.payBasis}
-              <select name="wage_basis" defaultValue={filters.wage_basis}>
-                <option value="hour">{t.hour}</option>
-                <option value="day">{t.day}</option>
-                <option value="week">{t.week}</option>
-                <option value="month">{t.month}</option>
-              </select>
-            </label>
+            {pickerField("wage_basis", choices.wage_basis, "choice")}
             <label data-field data-morph>
               {t.minHours}
               <input
@@ -417,27 +411,14 @@ export function JobFilters({
                 defaultValue={filters.min_hours}
               />
             </label>
-            <label data-field data-morph>
-              {t.housingKnown}
-              <select name="housing_known" defaultValue={filters.housing_known}>
-                <option value="">{t.housingAny}</option>
-                <option value="true">{t.housingKnownOption}</option>
-                <option value="false">{t.housingUnknownOption}</option>
-              </select>
-            </label>
-            <label data-field data-morph>
-              {t.freshness}
-              <select
-                name="confirmed_within_days"
-                defaultValue={filters.confirmed_within_days}
-              >
-                <option value="">{t.freshnessAny}</option>
-                <option value="7">{t.freshness7}</option>
-                <option value="3">{t.freshness3}</option>
-              </select>
-            </label>
+            {pickerField("housing_known", choices.housing_known, "choice")}
+            {pickerField(
+              "confirmed_within_days",
+              choices.confirmed_within_days,
+              "choice",
+            )}
           </div>
-          {!calendar && (
+          {!panel && (
             <>
               <div className="filter-actions" data-focus-hide data-morph>
                 <a href={localePath(locale)}>{t.clear}</a>
@@ -447,7 +428,7 @@ export function JobFilters({
             </>
           )}
         </form>
-      </dialog>
+      </Sheet>
     </>
   );
 }
