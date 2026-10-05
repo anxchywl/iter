@@ -124,12 +124,17 @@ test("detail shows distinct trust facts and contact destination before leaving",
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
   await page.getByRole("link", { name: "ҚАЗ" }).click();
   await expect(page.getByText("120.00 USD / апта")).toBeVisible();
-  const contact = page.locator(".contact-action");
-  await expect(contact.locator(".destination")).not.toBeVisible();
-  await contact.locator("summary").click();
-  await expect(contact.locator(".destination")).toHaveText(
+  const contact = page.getByRole("dialog", {
+    name: "Жұмыс берушіге хабарласу",
+  });
+  await expect(contact).not.toBeVisible();
+  await page.getByRole("button", { name: "Жұмыс берушіге хабарласу" }).click();
+  await expect(contact.locator(".destination").first()).toHaveText(
     "https://example.com/jobs/apply",
   );
+  await expect(contact.locator(".channel")).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  await expect(contact).not.toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(375);

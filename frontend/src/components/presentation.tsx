@@ -327,39 +327,7 @@ export function ListingCard({
   );
 }
 
-export function ContactAction({
-  url,
-  locale,
-}: {
-  url: string;
-  locale: Locale;
-}) {
-  const t = getCopy(locale);
-  const link = safeContact(url);
-  if (!link) return <p className="notice">{t.unsafeContact}</p>;
-  return (
-    <details className="contact-action">
-      <summary>{t.directContact}</summary>
-      <div className="contact-reveal">
-        <p>{t.contactIntro}</p>
-        <p className="destination" dir="ltr">
-          {link.destination}
-        </p>
-        <a
-          href={link.href}
-          target={
-            link.kind === "web" || link.kind === "telegram"
-              ? "_blank"
-              : undefined
-          }
-          rel="noopener noreferrer"
-        >
-          {t.continue}
-        </a>
-      </div>
-    </details>
-  );
-}
+export { ContactAction } from "@/components/contact-sheet";
 
 function reviewAnswer(value: string, t: Copy): string {
   return value === "yes"

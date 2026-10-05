@@ -219,7 +219,11 @@ export async function DetailPage({
             <span className="source-note">{t.fromEmployer}</span>
           </div>
           <div className="detail-actions">
-            <ContactAction url={listing.contact_url} locale={locale} />
+            <ContactAction
+              url={listing.contact_url}
+              website={listing.employer_official_website_url}
+              locale={locale}
+            />
             {telegram && (
               <a
                 className="telegram-link"

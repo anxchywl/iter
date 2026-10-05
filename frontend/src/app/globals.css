@@ -870,46 +870,89 @@ p {
   gap: 0.5rem;
   margin-top: 1rem;
 }
-.contact-action > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 0.75rem 1rem;
-  border-radius: 9px;
-  background: var(--teal);
-  color: white;
-  text-align: center;
-  font-size: 0.85rem;
-  font-weight: 800;
+.contact-trigger {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 0.88rem;
 }
-.contact-action > summary::-webkit-details-marker {
-  display: none;
+.contact-sheet {
+  padding: 0 1rem calc(1.2rem + env(safe-area-inset-bottom));
 }
-.contact-reveal {
-  margin-top: 0.5rem;
-  padding: 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: white;
+.contact-intro {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
   font-size: 0.8rem;
+  text-align: center;
 }
-.contact-reveal p {
-  margin: 0.2rem 0 0.5rem;
+.channel-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.contact-reveal .destination {
-  padding: 0.6rem;
-  border-radius: 6px;
-  background: #f1f5f3;
-  overflow-wrap: anywhere;
-  font-family: ui-monospace, monospace;
-}
-.contact-reveal a {
-  display: inline-block;
-  padding: 0.55rem 0.75rem;
-  border-radius: 6px;
-  background: var(--teal);
-  color: white;
-  font-weight: 700;
+.channel {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
   text-decoration: none;
+  transition:
+    border-color 0.18s ease,
+    transform 0.12s ease;
+}
+.channel:active {
+  transform: scale(0.98);
+}
+@media (hover: hover) {
+  .channel:hover {
+    border-color: var(--teal);
+  }
+}
+.channel-badge {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--mint);
+  color: var(--teal-deep);
+}
+.channel[data-kind="telegram"] .channel-badge {
+  background: #26a5e4;
+  color: #fff;
+}
+.channel[data-kind="whatsapp"] .channel-badge {
+  background: #25d366;
+  color: #fff;
+}
+.channel-icon,
+.channel-badge .icon {
+  width: 22px;
+  height: 22px;
+}
+.channel-text {
+  display: grid;
+  flex: 1;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.channel-text strong {
+  font-size: 0.9rem;
+}
+.channel .destination {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.channel > .icon {
+  color: var(--muted);
 }
 .telegram-link {
   color: var(--teal-deep);
