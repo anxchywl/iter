@@ -553,6 +553,32 @@ def test_reports_are_private_idempotent_and_audited(client, auth):
     assert events["items"][0]["details"]["to"] == "resolved"
 
 
+def test_report_reasons_must_match_the_reported_item(client, auth):
+    owner = employer(client, auth)
+    item = published(client, auth, owner["id"])
+    listing_report = {
+        "request_id": "3f0f7f8e-8c39-4a52-9a43-2f6b3b0c6a10",
+        "item_type": "listing",
+        "item_id": item["id"],
+        "reason": "closed",
+    }
+    assert client.post("/api/v1/reports", json=listing_report).status_code == 202
+    for reason in ("off_topic", "unknown"):
+        rejected = {
+            **listing_report,
+            "request_id": "8c1d6a7e-2b4f-4c1e-9d3a-5e6f7a8b9c0d",
+            "reason": reason,
+        }
+        assert client.post("/api/v1/reports", json=rejected).status_code == 422
+    review_report = {
+        **listing_report,
+        "request_id": "a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+        "item_type": "review",
+        "reason": "suspicious",
+    }
+    assert client.post("/api/v1/reports", json=review_report).status_code == 422
+
+
 def test_public_submissions_are_disabled_by_default(client, auth, database_url, monkeypatch):
     owner = employer(client, auth)
     item = published(client, auth, owner["id"])
@@ -964,3 +990,64 @@ def test_environment_cannot_enable_telemetry_export(
     with caplog.at_level("DEBUG", logger="fastapi"), TestClient(app):
         pass
     assert "automatic telemetry" not in caplog.text
+
+
+def test_report_reason_upgrade_keeps_existing_reports(database_url):
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    engine = create_engine(database_url)
+    old = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("TRUNCATE reports, listings, employers CASCADE"))
+        command.downgrade(config, "c4f20690e0aa")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO employers (id, legal_name, official_website_url, "
+                    "identity_status, version) VALUES ('e-upgrade', 'Upgrade Employer', "
+                    "'https://example.com', 'not_checked', 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO listings (id, employer_id, source_identifier, season_year, "
+                    "status, state, city, location_timezone, category, role, official_source_url, "
+                    "contact_url, sponsor_route_status, sponsor_approval_status, state_changed_at, "
+                    "version) VALUES ('l-upgrade', 'e-upgrade', 'upgrade-role', 2027, 'draft', "
+                    "'New York', 'Albany', 'America/New_York', 'Hospitality', 'Desk assistant', "
+                    "'https://example.com/jobs/upgrade', 'https://example.com/apply', "
+                    "'not_reported', 'unknown', now(), 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO reports (id, request_id, content_hash, item_type, item_id, "
+                    "reason, status, submitted_at, version) VALUES ('r-old', 'q-old', 'h', "
+                    "'listing', 'listing-id', 'harmful', 'pending', now(), 1)"
+                )
+            )
+        command.upgrade(config, "head")
+        with engine.begin() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT reason FROM reports WHERE id = 'r-old'")
+                ).scalar_one()
+                == "harmful"
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO reports (id, request_id, content_hash, item_type, item_id, "
+                    "reason, status, submitted_at, version) VALUES ('r-new', 'q-new', 'h', "
+                    "'listing', 'listing-id', 'closed', 'pending', now(), 1)"
+                )
+            )
+            connection.execute(text("TRUNCATE reports"))
+    finally:
+        command.upgrade(config, "head")
+        engine.dispose()
+        if old is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = old

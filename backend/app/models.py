@@ -262,7 +262,8 @@ class Report(Base):
     __table_args__ = (
         CheckConstraint("item_type IN ('listing', 'review')", name="report_item_type"),
         CheckConstraint(
-            "reason IN ('personal_data', 'inaccurate', 'harmful', 'other')",
+            "reason IN ('personal_data', 'inaccurate', 'harmful', 'other', "
+            "'closed', 'suspicious', 'off_topic')",
             name="report_reason",
         ),
         CheckConstraint("status IN ('pending', 'resolved', 'dismissed')", name="report_status"),

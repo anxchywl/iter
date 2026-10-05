@@ -238,7 +238,17 @@ class ReportSubmit(InputModel):
     request_id: UUID4
     item_type: str = Field(pattern="^(listing|review)$")
     item_id: str = Field(min_length=36, max_length=36)
-    reason: str = Field(pattern="^(personal_data|inaccurate|harmful|other)$")
+    reason: str = Field(
+        pattern="^(personal_data|inaccurate|harmful|other|closed|suspicious|off_topic)$"
+    )
     explanation: str | None = Field(default=None, max_length=300)
 
     _explanation = field_validator("explanation")(safe_review_text)
+
+    @model_validator(mode="after")
+    def match_reason_to_item(self) -> "ReportSubmit":
+        if self.reason in {"closed", "suspicious"} and self.item_type != "listing":
+            raise ValueError("reason applies only to listings")
+        if self.reason == "off_topic" and self.item_type != "review":
+            raise ValueError("reason applies only to reviews")
+        return self
