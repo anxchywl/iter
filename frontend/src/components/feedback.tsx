@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { getCopy, type Locale } from "@/lib/copy";
 import { useFocusMode } from "@/lib/focus-mode";
+import { FocusDone } from "@/components/focus-done";
 
 type ItemType = "listing" | "review";
 
@@ -141,6 +142,7 @@ export function ReviewForm({
         <button type="submit" disabled={busy} data-focus-hide data-morph>
           {t.sendReview}
         </button>
+        <FocusDone label={t.done} />
         <p role="status">{status}</p>
       </form>
     </section>
@@ -213,6 +215,7 @@ export function ReportForm({
         <button type="submit" disabled={busy} data-focus-hide data-morph>
           {t.sendReport}
         </button>
+        <FocusDone label={t.done} />
         <p role="status">{status}</p>
       </form>
     </details>

@@ -90,7 +90,7 @@ p {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.97);
+  background: #fff;
   border-bottom: 1px solid var(--line);
 }
 .header-inner {
@@ -205,9 +205,13 @@ p {
 .filter-trigger:active {
   transform: scale(0.94);
 }
-.filter-trigger:hover,
 .filter-trigger:focus-visible {
   border-color: var(--teal);
+}
+@media (hover: hover) {
+  .filter-trigger:hover {
+    border-color: var(--teal);
+  }
 }
 .filter-trigger span {
   position: absolute;
@@ -239,9 +243,17 @@ p {
   color: var(--ink);
   overflow-y: auto;
   overscroll-behavior: contain;
-  box-shadow: 0 -16px 60px rgba(18, 43, 33, 0.18);
+  box-shadow:
+    0 -16px 60px rgba(18, 43, 33, 0.18),
+    0 48px 0 #fff,
+    0 96px 0 #fff,
+    0 144px 0 #fff,
+    0 50vh 0 #fff;
   transform: translateY(100%);
   transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.filter-dialog:focus {
+  outline: 0;
 }
 .filter-dialog[data-visible] {
   transform: translateY(0);
@@ -405,8 +417,10 @@ p {
   cursor: pointer;
   transition: background 0.18s ease;
 }
-.calendar-step:hover {
-  background: var(--mint);
+@media (hover: hover) {
+  .calendar-step:hover {
+    background: var(--mint);
+  }
 }
 .calendar-step .icon {
   width: 18px;
@@ -446,8 +460,10 @@ p {
     color 0.16s ease,
     transform 0.12s ease;
 }
-.calendar-grid button:hover {
-  background: var(--mint);
+@media (hover: hover) {
+  .calendar-grid button:hover {
+    background: var(--mint);
+  }
 }
 .calendar-grid button:active {
   transform: scale(0.9);
@@ -499,18 +515,6 @@ p {
 [data-focus] [data-field][data-active] {
   grid-column: 1 / -1;
 }
-.focus-done {
-  display: none;
-}
-[data-focus] .focus-done {
-  display: flex;
-}
-.filter-actions.focus-done button {
-  width: 100%;
-  min-height: 44px;
-  border-radius: 12px;
-  font-size: 0.88rem;
-}
 [data-focus] [role="status"]:empty {
   display: none;
 }
@@ -550,9 +554,13 @@ p {
   text-decoration: none;
   transition: background 0.15s ease;
 }
-.listing-link:hover,
 .listing-link:focus-visible {
   background: #f6faf6;
+}
+@media (hover: hover) {
+  .listing-link:hover {
+    background: #f6faf6;
+  }
 }
 .listing-link:active {
   background: var(--mint);
@@ -662,9 +670,11 @@ p {
     background 0.18s ease,
     color 0.18s ease;
 }
-.footer-source:hover {
-  background: var(--mint);
-  color: var(--teal-deep);
+@media (hover: hover) {
+  .footer-source:hover {
+    background: var(--mint);
+    color: var(--teal-deep);
+  }
 }
 .footer-source .icon {
   width: 20px;
@@ -1078,6 +1088,37 @@ p {
 }
 .notice {
   color: #8b3730;
+}
+.focus-done {
+  display: none;
+}
+[data-focus] .focus-done {
+  display: flex;
+}
+.focus-done > button {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--teal);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s ease;
+}
+.focus-done > button:active {
+  transform: scale(0.98);
+}
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 @media (max-width: 360px) {
   .content-wrap,

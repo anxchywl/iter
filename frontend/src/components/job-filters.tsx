@@ -12,6 +12,7 @@ import type { SearchFilters } from "@/lib/directory";
 import { useFocusMode } from "@/lib/focus-mode";
 import { morph, reducedMotion } from "@/lib/motion";
 import { Calendar } from "@/components/calendar";
+import { FocusDone } from "@/components/focus-done";
 
 type DateKey = "start_from" | "end_by";
 
@@ -71,6 +72,7 @@ export function JobFilters({
         "--keyboard",
         `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`,
       );
+    update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     return () => {
@@ -441,18 +443,7 @@ export function JobFilters({
                 <a href={localePath(locale)}>{t.clear}</a>
                 <button type="submit">{t.apply}</button>
               </div>
-              <div className="filter-actions focus-done" data-morph>
-                <button
-                  type="button"
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    const active = document.activeElement;
-                    if (active instanceof HTMLElement) active.blur();
-                  }}
-                >
-                  {t.done}
-                </button>
-              </div>
+              <FocusDone label={t.done} className="filter-actions" />
             </>
           )}
         </form>

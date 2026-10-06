@@ -235,3 +235,23 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   await expect(page).toHaveURL(new RegExp(`start_from=${chosen}`));
   await expect(page).toHaveURL(/city=Albany/);
 });
+
+test("review form focuses one field on phones and returns with done", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/ru/jobs/${id}`);
+  const role = page.getByRole("textbox", { name: "Кем вы работали" });
+  await role.click();
+  await expect(page.getByLabel("Условия оплаты были понятны?")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Отправить на проверку" }),
+  ).toBeHidden();
+  await role.fill("Front desk");
+  await page.getByRole("button", { name: "Готово" }).click();
+  await expect(role).not.toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Отправить на проверку" }),
+  ).toBeVisible();
+  await expect(role).toHaveValue("Front desk");
+});
