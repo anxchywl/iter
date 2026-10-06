@@ -15,7 +15,7 @@ import {
   Reviews,
   TrustFacts,
 } from "../src/components/presentation";
-import { ReviewForm } from "../src/components/feedback";
+import { ReportForm, ReviewForm } from "../src/components/feedback";
 
 const listing: Listing = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -57,9 +57,7 @@ describe("public search and rendering", () => {
   it("shows review count and date without an employer score", () => {
     const html = renderToStaticMarkup(
       <Reviews
-        count={1}
         locale="ru"
-        feedbackEnabled
         items={[
           {
             id: "22222222-2222-4222-8222-222222222222",
@@ -77,11 +75,30 @@ describe("public search and rendering", () => {
         ]}
       />,
     );
-    expect(html).toContain("Одобренных отзывов: 1");
+    expect(html).not.toContain("Одобренных отзывов");
     expect(html).toContain("Front desk");
     expect(html).toContain("Short factual account");
-    expect(html).toContain("Сообщить о проблеме");
+    expect(html).not.toContain("Сообщить о проблеме");
     expect(html).not.toContain("rating");
+  });
+
+  it("lets one report sheet target the vacancy or a listed experience", () => {
+    const html = renderToStaticMarkup(
+      <ReportForm
+        itemType="listing"
+        itemId={listing.id}
+        locale="ru"
+        reviews={[
+          { id: "22222222-2222-4222-8222-222222222222", label: "Отзыв: Cook" },
+        ]}
+      />,
+    );
+    expect(html).toContain("Эта вакансия");
+    expect(html).toContain(`value="listing:${listing.id}"`);
+    expect(html).toContain(
+      'value="review:22222222-2222-4222-8222-222222222222"',
+    );
+    expect(html).toContain("Отзыв: Cook");
   });
 
   it("offers a bounded localized review form", () => {
@@ -142,6 +159,24 @@ describe("public search and rendering", () => {
     expect(html).toContain(getCopy("kk").routeReportedGeneric);
     expect(html).toContain(getCopy("kk").approvalUnknown);
     expect(html).not.toContain(getCopy("kk").approvalConfirmed);
+  });
+
+  it("groups evidence links below the trust facts", () => {
+    const html = renderToStaticMarkup(
+      <TrustFacts listing={listing} locale="en" />,
+    );
+    const trustListEnd = html.indexOf("</dl>");
+    const evidenceLinksStart = html.indexOf('<div class="evidence-links">');
+
+    expect(trustListEnd).toBeGreaterThan(-1);
+    expect(evidenceLinksStart).toBeGreaterThan(trustListEnd);
+    expect(html.slice(0, trustListEnd)).not.toContain("<a ");
+    expect(html.slice(evidenceLinksStart)).toContain(
+      `href="${listing.official_source_url}"`,
+    );
+    expect(html.slice(evidenceLinksStart)).toContain(
+      `href="${listing.sponsor_route_source_url}"`,
+    );
   });
 
   it("localizes platform paths and reveals the destination before the contact link", () => {
