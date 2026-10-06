@@ -34,6 +34,7 @@ shellcheck_image="koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea
 
 "$repo_root/scripts/local-env.sh"
 export ITER_WEB_PORT=3019
+export PLAYWRIGHT_PORT="${PLAYWRIGHT_PORT:-3020}"
 compose=(docker compose --project-name iter-directory-check --env-file "$repo_root/.env.local" -f "$repo_root/compose.local.yaml")
 cleanup() {
   "${compose[@]}" --profile test down --volumes --remove-orphans >/dev/null
@@ -42,7 +43,7 @@ trap cleanup EXIT
 
 phase "Compose config and image builds"
 "${compose[@]}" --profile test config --quiet
-"${compose[@]}" --profile test build backend backend-test frontend
+"${compose[@]}" --profile test build migrate backend backend-test frontend
 "${compose[@]}" --profile test up -d --wait db-test
 "${compose[@]}" --profile test exec -T db-test createdb -U iter_test iter_migrations
 
