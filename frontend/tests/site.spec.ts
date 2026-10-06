@@ -16,6 +16,16 @@ test("mobile localized search and no-results state fit without overflow", async 
   await expect(
     page.locator(".listing-link").filter({ hasText: "Front desk assistant" }),
   ).toBeVisible();
+  await expect(page.locator(".pagination")).toHaveCount(0);
+  const finalCard = await page
+    .locator(".listing-card:last-child")
+    .boundingBox();
+  const footer = await page.locator(".site-footer").boundingBox();
+  expect(finalCard).not.toBeNull();
+  expect(footer).not.toBeNull();
+  expect(footer!.y - (finalCard!.y + finalCard!.height)).toBeLessThanOrEqual(
+    40,
+  );
   await page.getByRole("button", { name: "Фильтры" }).click();
   await expect(page.getByRole("dialog", { name: "Фильтры" })).toBeVisible();
   await page.getByLabel("Город").fill("Missing City");
@@ -55,6 +65,10 @@ test("job finder keeps search, filters, and detail in one flow", async ({
     .click();
   await expect(page).toHaveURL(/city=Albany/);
   expect(new URL(page.url()).searchParams.get("q")).toBe("assistant");
+  const language = page.locator(".language-switch");
+  await language.evaluate((link) => {
+    link.setAttribute("data-instance", "persistent");
+  });
   await page.locator(".listing-link").click();
   await expect(page).toHaveURL(new RegExp(`/ru/jobs/${id}$`));
   await expect(
@@ -65,10 +79,22 @@ test("job finder keeps search, filters, and detail in one flow", async ({
     .first()
     .click();
   await expect(page).toHaveURL(/\/ru$/);
+  await expect(language).toHaveAttribute("data-instance", "persistent");
+  expect(
+    await page
+      .locator(".language-code")
+      .evaluate((code) => getComputedStyle(code).animationName),
+  ).toBe("none");
   await page.evaluate(() => {
     (window as unknown as { languageMarker: boolean }).languageMarker = true;
   });
-  await page.getByRole("link", { name: "ҚАЗ" }).click();
+  await expect(language).toHaveText("РУС");
+  await expect(language).toHaveAccessibleName("Сменить язык на English");
+  await language.click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(language).toHaveText("EN");
+  await language.click();
   await expect(page).toHaveURL(/\/kk$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "kk");
   expect(
@@ -76,9 +102,14 @@ test("job finder keeps search, filters, and detail in one flow", async ({
       () => (window as unknown as { languageMarker?: boolean }).languageMarker,
     ),
   ).toBe(true);
-  await page.getByRole("link", { name: "РУС" }).click();
+  await language.click();
   await expect(page).toHaveURL(/\/ru$/);
   await expect(page.locator(".brand").first()).toHaveText("iter");
+  expect(
+    await page
+      .locator(".site-header")
+      .evaluate((header) => getComputedStyle(header).position),
+  ).toBe("relative");
   expect((await page.request.get("/icon.svg")).status()).toBe(200);
   await expect(
     page.getByRole("link", { name: "Исходный код на GitHub" }),
@@ -115,14 +146,36 @@ test("detail shows distinct trust facts and contact destination before leaving",
     page.getByText("Демеушінің мақұлдауы расталмаған"),
   ).toBeVisible();
   await expect(page.getByText("120.00 USD / апта")).toBeVisible();
-  await page.evaluate(() => window.scrollTo({ top: 600, behavior: "instant" }));
-  await page.getByRole("link", { name: "EN" }).click();
+  const trustList = page.locator(".trust-list");
+  const evidenceLinks = page.locator(".evidence-links");
+  await expect(trustList.getByRole("link")).toHaveCount(0);
+  await expect(
+    evidenceLinks.getByRole("link", { name: /Бос орынның ресми дереккөзі/ }),
+  ).toBeVisible();
+  const trustListBox = await trustList.boundingBox();
+  const evidenceLinksBox = await evidenceLinks.boundingBox();
+  expect(trustListBox).not.toBeNull();
+  expect(evidenceLinksBox).not.toBeNull();
+  expect(evidenceLinksBox!.y).toBeGreaterThanOrEqual(
+    trustListBox!.y + trustListBox!.height,
+  );
+  await page.evaluate(() => window.scrollTo({ top: 300, behavior: "instant" }));
+  const language = page.locator(".language-switch");
+  await language.evaluate((link: HTMLElement) => link.click());
+  await expect(page).toHaveURL(new RegExp(`/ru/jobs/${id}$`));
+  await expect(page.getByText("120.00 USD / неделю")).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(250);
+  await language.click();
   await expect(page).toHaveURL(new RegExp(`/jobs/${id}$`));
   await expect(
     page.getByRole("heading", { name: "Work conditions" }),
   ).toBeVisible();
-  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
-  await page.getByRole("link", { name: "ҚАЗ" }).click();
+  await expect(
+    page.getByText(
+      "Hours, tips, and bonuses are not guaranteed by this directory.",
+    ),
+  ).toHaveCount(0);
+  await language.click();
   await expect(page.getByText("120.00 USD / апта")).toBeVisible();
   const contact = page.getByRole("dialog", {
     name: "Жұмыс берушіге хабарласу",
@@ -144,6 +197,7 @@ test("student can submit a pending experience and report an issue", async ({
   page,
 }) => {
   await page.goto(`/ru/jobs/${id}`);
+  await expect(page.getByText("Пока нет одобренных отзывов.")).toHaveCount(0);
   await page.getByRole("button", { name: "Поделиться опытом" }).click();
   const review = page.getByRole("dialog", { name: "Поделиться опытом" });
   await expect(review.getByText("Шаг 1 из 3")).toBeVisible();

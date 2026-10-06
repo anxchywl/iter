@@ -1,93 +1,11 @@
 import Link from "next/link";
 import type { Copy, Locale } from "@/lib/copy";
-import { fill, getCopy, intlLocale, localePath, locales } from "@/lib/copy";
+import { fill, getCopy, intlLocale, localePath } from "@/lib/copy";
 import type { Listing, Review } from "@/lib/directory";
-import { DocumentLanguage } from "@/components/document-language";
-import { ReportForm } from "@/components/feedback";
-import { ExternalIcon, GitHubIcon } from "@/components/icons";
+import { ExternalIcon } from "@/components/icons";
 import { LinkPending } from "@/components/link-pending";
 import { plainText } from "@/lib/directory";
-import { miniAppLink, safeContact } from "@/lib/links";
-
-export function SiteShell({
-  locale,
-  path,
-  children,
-}: {
-  locale: Locale;
-  path: string;
-  children: React.ReactNode;
-}) {
-  const t = getCopy(locale);
-  const telegram = miniAppLink();
-  return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main">
-        {t.skip}
-      </a>
-      <DocumentLanguage locale={locale} />
-      <header className="site-header">
-        {process.env.DIRECTORY_DEMO_MODE === "true" && (
-          <div className="demo-banner">{t.demo}</div>
-        )}
-        <div className="header-inner">
-          <Link
-            className="brand"
-            href={localePath(locale)}
-            aria-label={`${t.brand}, ${t.browse}`}
-          >
-            <span className="brand-initial">i</span>ter
-          </Link>
-          <nav className="language-nav" aria-label={t.language}>
-            {locales.map((target) => (
-              <Link
-                key={target}
-                href={localePath(target, path)}
-                hrefLang={target}
-                lang={target}
-                scroll={false}
-                aria-current={target === locale ? "page" : undefined}
-              >
-                {target === "kk" ? "ҚАЗ" : target === "ru" ? "РУС" : "EN"}
-                <LinkPending />
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </header>
-      <main id="main">{children}</main>
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <div className="footer-bottom">
-            <span>
-              © {new Date().getFullYear()} {t.brand}
-            </span>
-            <a
-              className="footer-source"
-              href="https://github.com/anxchywl/iter"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={t.sourceCode}
-              title={t.sourceCode}
-            >
-              <GitHubIcon />
-            </a>
-          </div>
-          {telegram && (
-            <a
-              className="telegram-launch"
-              href={telegram}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t.telegram}
-            </a>
-          )}
-        </div>
-      </footer>
-    </div>
-  );
-}
+import { safeContact } from "@/lib/links";
 
 export function formattedDate(
   value: string | null,
@@ -179,49 +97,53 @@ export function TrustFacts({
           ? t.approvalDenied
           : t.approvalUnknown;
   return (
-    <dl className="trust-list">
-      <div>
-        <dt>{identity}</dt>
-        <dd>
-          {listing.employer_identity_status === "checked" && (
-            <>
+    <>
+      <dl className="trust-list">
+        <div>
+          <dt>{identity}</dt>
+          <dd>
+            {listing.employer_identity_status === "checked" && (
               <span>
                 {formattedDate(listing.employer_identity_checked_at, locale, t)}
               </span>
-              {sourceLink(
-                listing.employer_identity_public_source_url,
-                t.source,
-                t,
-              )}
-            </>
-          )}
-        </dd>
-      </div>
-      <div>
-        <dt>{t.confirmed}</dt>
-        <dd>{formattedDate(listing.last_confirmed_at, locale, t)}</dd>
-      </div>
-      <div>
-        <dt>{route}</dt>
-        <dd>
-          {listing.sponsor_route_status !== "not_reported" &&
-            sourceLink(listing.sponsor_route_source_url, t.source, t)}
-        </dd>
-      </div>
-      <div>
-        <dt>{approval}</dt>
-        <dd>
-          {listing.sponsor_approval_status !== "unknown" && (
-            <>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>{t.confirmed}</dt>
+          <dd>
+            <span>{formattedDate(listing.last_confirmed_at, locale, t)}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>{route}</dt>
+          <dd />
+        </div>
+        <div>
+          <dt>{approval}</dt>
+          <dd>
+            {listing.sponsor_approval_status !== "unknown" && (
               <span>
                 {formattedDate(listing.sponsor_decision_at, locale, t)}
               </span>
-              {sourceLink(listing.sponsor_decision_url, t.source, t)}
-            </>
+            )}
+          </dd>
+        </div>
+      </dl>
+      <div className="evidence-links">
+        {listing.employer_identity_status === "checked" &&
+          sourceLink(
+            listing.employer_identity_public_source_url,
+            t.evidenceSource,
+            t,
           )}
-        </dd>
+        {sourceLink(listing.official_source_url, t.source, t)}
+        {listing.sponsor_route_status !== "not_reported" &&
+          sourceLink(listing.sponsor_route_source_url, t.evidenceSource, t)}
+        {listing.sponsor_approval_status !== "unknown" &&
+          sourceLink(listing.sponsor_decision_url, t.evidenceSource, t)}
       </div>
-    </dl>
+    </>
   );
 }
 
@@ -341,31 +263,26 @@ function reviewAnswer(value: string, t: Copy): string {
 
 export function Reviews({
   items,
-  count,
   locale,
-  feedbackEnabled = false,
+  actions,
 }: {
   items: Review[];
-  count: number;
   locale: Locale;
-  feedbackEnabled?: boolean;
+  actions?: React.ReactNode;
 }) {
   const t = getCopy(locale);
   return (
     <section className="reviews" aria-labelledby="reviews-heading">
       <h2 id="reviews-heading">{t.reviews}</h2>
-      <p>
-        {t.reviewCount}: {count}
-      </p>
-      {items.length === 0 ? (
-        <p>{t.reviewsEmpty}</p>
-      ) : (
+      {items.length > 0 && (
         <div className="review-grid">
           {items.map((item) => (
             <article className="review" key={item.id}>
               <p className="review-meta">
                 <span>{fill(t.seasonYear, { year: item.season_year })}</span>
-                <span>{formattedDate(item.submitted_at, locale, t)}</span>
+                <time dateTime={item.submitted_at.slice(0, 10)}>
+                  {formattedDate(item.submitted_at, locale, t)}
+                </time>
               </p>
               <p className="review-note">{t.selfReported}</p>
               <p>
@@ -400,17 +317,11 @@ export function Reviews({
                 </div>
               </dl>
               {item.text && <p>{plainText(item.text)}</p>}
-              {feedbackEnabled && (
-                <ReportForm
-                  itemType="review"
-                  itemId={item.id}
-                  locale={locale}
-                />
-              )}
             </article>
           ))}
         </div>
       )}
+      {actions && <div className="experience-actions">{actions}</div>}
     </section>
   );
 }
