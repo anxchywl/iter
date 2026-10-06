@@ -8,7 +8,7 @@ x-logging: &bounded-logging
 
 services:
   db:
-    image: postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7eb701be2227a03e0641
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
     environment:
       POSTGRES_DB: iter_local
       POSTGRES_USER: iter_local
@@ -106,7 +106,7 @@ services:
 
   db-test:
     profiles: [test]
-    image: postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7eb701be2227a03e0641
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
     environment:
       POSTGRES_DB: iter_test
       POSTGRES_USER: iter_test
