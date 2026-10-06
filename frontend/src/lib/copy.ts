@@ -5,7 +5,7 @@ export const locales: Locale[] = ["kk", "en", "ru"];
 const copy = {
   en: {
     brand: "iter",
-    eyebrow: "Kazakhstan · Summer Work Travel",
+    eyebrow: "Kazakhstan, Summer Work Travel",
     shapeFind: "FIND",
     shapeRead: "READ",
     shapeContact: "CONTACT",
@@ -17,8 +17,7 @@ const copy = {
     viewDetails: "View details",
     footerExplore: "Explore",
     footerProject: "Project",
-    sourceCode: "Source repository",
-    repositoryPrivate: "Private for now; access requires permission.",
+    sourceCode: "Source code on GitHub",
     moreFilters: "More filters",
     stepFind: "Find a role",
     stepFindText:
@@ -67,6 +66,7 @@ const copy = {
     freshness7: "Within 7 days",
     freshness3: "Within 3 days",
     apply: "Show results",
+    done: "Done",
     clear: "Clear filters",
     results: "Vacancies",
     noListings: "No current vacancies yet",
@@ -89,9 +89,9 @@ const copy = {
     errorText:
       "Please try again later. No sample vacancies are shown as live results.",
     retry: "Try again",
-    loading: "Loading vacancies…",
+    loading: "Loading vacancies",
     unknown: "Unknown",
-    fromEmployer: "Employer source text · language not recorded",
+    fromEmployer: "Employer source text, language not recorded",
     hour: "hour",
     day: "day",
     week: "week",
@@ -173,11 +173,20 @@ const copy = {
     transportReview: "Transport",
     noGuarantee:
       "Hours, tips, and bonuses are not guaranteed by this directory.",
-    demo: "Local demonstration data — not live vacancies",
+    demo: "Local demonstration data, not live vacancies",
+    anyDate: "Any date",
+    clearDate: "Clear date",
+    calendarBack: "Back to filters",
+    previousMonth: "Previous month",
+    nextMonth: "Next month",
+    rangeBoth: "{start} to {end}",
+    rangeFrom: "From {start}",
+    rangeUntil: "Until {end}",
+    seasonYear: "Season {year}",
   },
   ru: {
     brand: "iter",
-    eyebrow: "Казахстан · Summer Work Travel",
+    eyebrow: "Казахстан, Summer Work Travel",
     shapeFind: "НАЙТИ",
     shapeRead: "ИЗУЧИТЬ",
     shapeContact: "СВЯЗАТЬСЯ",
@@ -189,8 +198,7 @@ const copy = {
     viewDetails: "Подробнее",
     footerExplore: "Разделы",
     footerProject: "Проект",
-    sourceCode: "Репозиторий проекта",
-    repositoryPrivate: "Пока закрытый; нужен доступ.",
+    sourceCode: "Исходный код на GitHub",
     moreFilters: "Больше фильтров",
     stepFind: "Найдите вакансию",
     stepFindText: "Выберите сезон и условия, которые важны именно вам.",
@@ -206,7 +214,7 @@ const copy = {
     trustFresh:
       "Через 14 дней без нового подтверждения вакансия исчезает из актуальных результатов.",
     trustSponsor:
-      "Проверка работодателя, открытая вакансия, маршрут через спонсора и одобрение спонсора — разные факты.",
+      "Проверка работодателя, открытая вакансия, маршрут через спонсора и одобрение спонсора являются разными фактами.",
     trustContact:
       "Каталог не подаёт заявку за вас и не принимает решения за спонсора.",
     directory: "Летняя работа: условия на виду",
@@ -238,6 +246,7 @@ const copy = {
     freshness7: "За 7 дней",
     freshness3: "За 3 дня",
     apply: "Показать",
+    done: "Готово",
     clear: "Сбросить фильтры",
     results: "Вакансии",
     noListings: "Пока нет актуальных вакансий",
@@ -260,9 +269,9 @@ const copy = {
     errorText:
       "Попробуйте позже. Тестовые вакансии не показываются как действующие.",
     retry: "Повторить",
-    loading: "Загружаем вакансии…",
+    loading: "Загружаем вакансии",
     unknown: "Не указано",
-    fromEmployer: "Исходный текст работодателя · язык не указан",
+    fromEmployer: "Исходный текст работодателя, язык не указан",
     hour: "час",
     day: "день",
     week: "неделю",
@@ -343,11 +352,20 @@ const copy = {
     housingReview: "Жильё",
     transportReview: "Транспорт",
     noGuarantee: "Каталог не гарантирует часы, чаевые и премии.",
-    demo: "Локальные тестовые данные — не действующие вакансии",
+    demo: "Локальные тестовые данные, не действующие вакансии",
+    anyDate: "Любая дата",
+    clearDate: "Сбросить дату",
+    calendarBack: "К фильтрам",
+    previousMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
+    rangeBoth: "С {start} по {end}",
+    rangeFrom: "С {start}",
+    rangeUntil: "До {end}",
+    seasonYear: "Сезон {year}",
   },
   kk: {
     brand: "iter",
-    eyebrow: "Қазақстан · Summer Work Travel",
+    eyebrow: "Қазақстан, Summer Work Travel",
     shapeFind: "ТАБУ",
     shapeRead: "ОҚУ",
     shapeContact: "ХАБАРЛАСУ",
@@ -359,8 +377,7 @@ const copy = {
     viewDetails: "Толығырақ",
     footerExplore: "Бөлімдер",
     footerProject: "Жоба",
-    sourceCode: "Жобаның репозиторийі",
-    repositoryPrivate: "Әзірге жабық; кіру үшін рұқсат керек.",
+    sourceCode: "GitHub-тағы бастапқы код",
     moreFilters: "Қосымша сүзгілер",
     stepFind: "Бос орынды табыңыз",
     stepFindText: "Маусымды және өзіңізге маңызды шарттарды таңдаңыз.",
@@ -376,7 +393,7 @@ const copy = {
     trustFresh:
       "14 күн ішінде қайта расталмаған бос орын қазіргі нәтижелерден алынады.",
     trustSponsor:
-      "Жұмыс берушіні тексеру, ашық бос орын, демеуші бағыты және демеушінің мақұлдауы — бөлек деректер.",
+      "Жұмыс берушіні тексеру, ашық бос орын, демеуші бағыты және демеушінің мақұлдауы бөлек деректер.",
     trustContact:
       "Каталог сіздің атыңыздан өтініш бермейді және демеушінің орнына шешім қабылдамайды.",
     directory: "Жазғы жұмыс: шарттары анық көрсетілген",
@@ -408,6 +425,7 @@ const copy = {
     freshness7: "7 күн ішінде",
     freshness3: "3 күн ішінде",
     apply: "Нәтижелерді көрсету",
+    done: "Дайын",
     clear: "Сүзгілерді тазалау",
     results: "Бос орындар",
     noListings: "Әзірге қазіргі бос орындар жоқ",
@@ -430,9 +448,9 @@ const copy = {
     errorText:
       "Кейінірек қайталап көріңіз. Сынақ деректері нақты бос орын ретінде көрсетілмейді.",
     retry: "Қайталау",
-    loading: "Бос орындар жүктелуде…",
+    loading: "Бос орындар жүктелуде",
     unknown: "Көрсетілмеген",
-    fromEmployer: "Жұмыс берушінің бастапқы мәтіні · тілі көрсетілмеген",
+    fromEmployer: "Жұмыс берушінің бастапқы мәтіні, тілі көрсетілмеген",
     hour: "сағат",
     day: "күн",
     week: "апта",
@@ -514,7 +532,16 @@ const copy = {
     transportReview: "Көлік",
     noGuarantee:
       "Каталог жұмыс сағатына, шайпұлға және сыйақыға кепілдік бермейді.",
-    demo: "Жергілікті сынақ деректері — нақты бос орындар емес",
+    demo: "Жергілікті сынақ деректері, нақты бос орындар емес",
+    anyDate: "Кез келген күн",
+    clearDate: "Күнді тазалау",
+    calendarBack: "Сүзгілерге оралу",
+    previousMonth: "Алдыңғы ай",
+    nextMonth: "Келесі ай",
+    rangeBoth: "{start} бастап {end} дейін",
+    rangeFrom: "{start} бастап",
+    rangeUntil: "{end} дейін",
+    seasonYear: "{year} маусымы",
   },
 } as const;
 
@@ -525,6 +552,19 @@ export function getCopy(locale: Locale): Copy {
 
 export function isLocale(value: string): value is Locale {
   return value === "en" || value === "ru" || value === "kk";
+}
+
+export function intlLocale(locale: Locale): string {
+  return locale === "kk" ? "kk-KZ" : locale === "ru" ? "ru-RU" : "en-US";
+}
+
+export function fill(
+  template: string,
+  values: Record<string, string | number>,
+) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    String(values[key] ?? ""),
+  );
 }
 
 export function localePath(locale: Locale, path = "/"): string {

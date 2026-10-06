@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { getCopy, type Locale } from "@/lib/copy";
+import { useFocusMode } from "@/lib/focus-mode";
 
 type ItemType = "listing" | "review";
 
@@ -38,8 +39,10 @@ export function ReviewForm({
 }) {
   const t = getCopy(locale);
   const receipt = useReceipt();
+  const panel = useRef<HTMLElement>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  useFocusMode(panel, panel);
   const options = [
     ["unknown", t.unknownReview],
     ["yes", t.matched],
@@ -83,11 +86,15 @@ export function ReviewForm({
     }
   }
   return (
-    <section className="feedback-panel" aria-labelledby="review-form-heading">
+    <section
+      className="feedback-panel"
+      aria-labelledby="review-form-heading"
+      ref={panel}
+    >
       <h2 id="review-form-heading">{t.reviewSubmit}</h2>
-      <p>{t.reviewHint}</p>
+      <p data-focus-hide>{t.reviewHint}</p>
       <form onSubmit={submit}>
-        <label>
+        <label data-field data-morph>
           {t.roleReview}
           <input
             name="role"
@@ -96,7 +103,7 @@ export function ReviewForm({
             required
           />
         </label>
-        <label>
+        <label data-field data-morph>
           {t.payClarity}
           <select name="pay_clarity" defaultValue="unknown">
             <option value="unknown">{t.unknownReview}</option>
@@ -112,7 +119,7 @@ export function ReviewForm({
             ["transport_match", t.transportReview],
           ] as const
         ).map(([name, label]) => (
-          <label key={name}>
+          <label key={name} data-field data-morph>
             {label}
             <select name={name} defaultValue="unknown">
               {options.map(([value, title]) => (
@@ -123,15 +130,15 @@ export function ReviewForm({
             </select>
           </label>
         ))}
-        <label>
+        <label data-field data-morph>
           {t.reviewMessage}
           <textarea name="text" maxLength={500} rows={3} />
         </label>
-        <label className="feedback-consent">
+        <label className="feedback-consent" data-focus-hide data-morph>
           <input name="consent" type="checkbox" required />
           {t.reviewConsent}
         </label>
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy} data-focus-hide data-morph>
           {t.sendReview}
         </button>
         <p role="status">{status}</p>
@@ -151,8 +158,10 @@ export function ReportForm({
 }) {
   const t = getCopy(locale);
   const receipt = useReceipt();
+  const panel = useRef<HTMLFormElement>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  useFocusMode(panel, panel);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -186,8 +195,8 @@ export function ReportForm({
   return (
     <details className="report-form">
       <summary>{t.report}</summary>
-      <form onSubmit={submit}>
-        <label>
+      <form onSubmit={submit} ref={panel}>
+        <label data-field data-morph>
           {t.reportReason}
           <select name="reason">
             <option value="personal_data">{t.reportPersonal}</option>
@@ -196,12 +205,12 @@ export function ReportForm({
             <option value="other">{t.reportOther}</option>
           </select>
         </label>
-        <label>
+        <label data-field data-morph>
           {t.reportExplanation}
           <textarea name="explanation" maxLength={300} rows={2} />
         </label>
-        <p>{t.reviewHint}</p>
-        <button type="submit" disabled={busy}>
+        <p data-focus-hide>{t.reviewHint}</p>
+        <button type="submit" disabled={busy} data-focus-hide data-morph>
           {t.sendReport}
         </button>
         <p role="status">{status}</p>

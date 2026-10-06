@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Locale } from "@/lib/copy";
-import { getCopy, localePath } from "@/lib/copy";
+import { fill, getCopy, localePath } from "@/lib/copy";
 import {
   getListing,
   getReviews,
@@ -14,6 +14,8 @@ import {
 } from "@/lib/directory";
 import { miniAppLink, safeContact, startListing } from "@/lib/links";
 import { ReportForm, ReviewForm } from "@/components/feedback";
+import { ChevronIcon, ExternalIcon } from "@/components/icons";
+import { LinkPending } from "@/components/link-pending";
 import { JobFilters } from "@/components/job-filters";
 import {
   Conditions,
@@ -89,14 +91,18 @@ export async function DirectoryPage({
                     <Link
                       href={`${localePath(locale)}?${pageQuery(filters, Number(filters.page) - 1)}`}
                     >
-                      ← {t.previous}
+                      <ChevronIcon direction="left" />
+                      {t.previous}
+                      <LinkPending />
                     </Link>
                   )}
                   {result.data.has_more && (
                     <Link
                       href={`${localePath(locale)}?${pageQuery(filters, Number(filters.page) + 1)}`}
                     >
-                      {t.next} →
+                      {t.next}
+                      <ChevronIcon direction="right" />
+                      <LinkPending />
                     </Link>
                   )}
                 </nav>
@@ -147,7 +153,9 @@ export async function DetailPage({
       <SiteShell locale={locale} path={path}>
         <div className="content-wrap detail-state">
           <Link className="back-link" href={localePath(locale)}>
-            ← {t.back}
+            <ChevronIcon direction="left" />
+            {t.back}
+            <LinkPending />
           </Link>
           <div className="state-panel" role={missing ? undefined : "alert"}>
             <span className="state-icon" aria-hidden="true">
@@ -191,14 +199,19 @@ export async function DetailPage({
     <SiteShell locale={locale} path={path}>
       <div className="content-wrap detail-wrap">
         <Link className="back-link" href={localePath(locale)}>
-          ← {t.back}
+          <ChevronIcon direction="left" />
+          {t.back}
+          <LinkPending />
         </Link>
         <div className="detail-head">
           <div>
-            <p className="eyebrow">
-              {listing.season_year} · {plainText(listing.category)} ·{" "}
-              {plainText(listing.city)}, {plainText(listing.state)}
-            </p>
+            <ul className="detail-tags">
+              <li>{fill(t.seasonYear, { year: listing.season_year })}</li>
+              <li>{plainText(listing.category)}</li>
+              <li>
+                {plainText(listing.city)}, {plainText(listing.state)}
+              </li>
+            </ul>
             <h1>{plainText(listing.role)}</h1>
             <p className="detail-employer">
               {plainText(listing.employer_legal_name)}
@@ -214,7 +227,8 @@ export async function DetailPage({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {t.telegram} ↗
+                {t.telegram}
+                <ExternalIcon />
               </a>
             )}
           </div>
@@ -269,7 +283,8 @@ export async function DetailPage({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {officialSource.destination} ↗
+                    {officialSource.destination}
+                    <ExternalIcon />
                   </a>
                 )}
               </div>
@@ -281,7 +296,8 @@ export async function DetailPage({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {employerSite.destination} ↗
+                    {employerSite.destination}
+                    <ExternalIcon />
                   </a>
                 )}
               </div>

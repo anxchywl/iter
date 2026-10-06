@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isLocale } from "@/lib/copy";
-import "@/app/globals.css";
 
 export async function generateMetadata({
   params,
@@ -32,9 +31,5 @@ export default async function LocaleLayout({
 }) {
   const { locale } = await params;
   if ((locale !== "ru" && locale !== "kk") || !isLocale(locale)) notFound();
-  return (
-    <html lang={locale}>
-      <body>{children}</body>
-    </html>
-  );
+  return children;
 }

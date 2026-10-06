@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import "@/app/globals.css";
 
 export const metadata: Metadata = {
   title: "iter | Summer Work Travel vacancies",
@@ -9,9 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function DefaultLayout({ children }: { children: ReactNode }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
+  return children;
 }

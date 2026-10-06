@@ -1,8 +1,11 @@
 import Link from "next/link";
 import type { Copy, Locale } from "@/lib/copy";
-import { getCopy, localePath, locales } from "@/lib/copy";
+import { fill, getCopy, intlLocale, localePath, locales } from "@/lib/copy";
 import type { Listing, Review } from "@/lib/directory";
+import { DocumentLanguage } from "@/components/document-language";
 import { ReportForm } from "@/components/feedback";
+import { ExternalIcon, GitHubIcon } from "@/components/icons";
+import { LinkPending } from "@/components/link-pending";
 import { plainText } from "@/lib/directory";
 import { miniAppLink, safeContact } from "@/lib/links";
 
@@ -22,15 +25,16 @@ export function SiteShell({
       <a className="skip-link" href="#main">
         {t.skip}
       </a>
-      {process.env.DIRECTORY_DEMO_MODE === "true" && (
-        <div className="demo-banner">{t.demo}</div>
-      )}
+      <DocumentLanguage locale={locale} />
       <header className="site-header">
+        {process.env.DIRECTORY_DEMO_MODE === "true" && (
+          <div className="demo-banner">{t.demo}</div>
+        )}
         <div className="header-inner">
           <Link
             className="brand"
             href={localePath(locale)}
-            aria-label={`${t.brand} — ${t.browse}`}
+            aria-label={`${t.brand}, ${t.browse}`}
           >
             <span className="brand-initial">i</span>ter
           </Link>
@@ -41,9 +45,11 @@ export function SiteShell({
                 href={localePath(target, path)}
                 hrefLang={target}
                 lang={target}
+                scroll={false}
                 aria-current={target === locale ? "page" : undefined}
               >
                 {target === "kk" ? "ҚАЗ" : target === "ru" ? "РУС" : "EN"}
+                <LinkPending />
               </Link>
             ))}
           </nav>
@@ -57,14 +63,16 @@ export function SiteShell({
               © {new Date().getFullYear()} {t.brand}
             </span>
             <a
+              className="footer-source"
               href="https://github.com/anxchywl/iter"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label={t.sourceCode}
+              title={t.sourceCode}
             >
-              {t.sourceCode}
+              <GitHubIcon />
             </a>
           </div>
-          <small>{t.repositoryPrivate}</small>
           {telegram && (
             <a
               className="telegram-launch"
@@ -89,15 +97,26 @@ export function formattedDate(
   if (!value) return t.unknown;
   const date = value.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return t.unknown;
-  return new Intl.DateTimeFormat(
-    locale === "kk" ? "kk-KZ" : locale === "ru" ? "ru-RU" : "en-US",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    },
-  ).format(new Date(`${date}T12:00:00Z`));
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00Z`));
+}
+
+export function dateRange(
+  start: string | null,
+  end: string | null,
+  locale: Locale,
+  t: Copy,
+): string {
+  const from = start ? formattedDate(start, locale, t) : null;
+  const until = end ? formattedDate(end, locale, t) : null;
+  if (from && until) return fill(t.rangeBoth, { start: from, end: until });
+  if (from) return fill(t.rangeFrom, { start: from });
+  if (until) return fill(t.rangeUntil, { end: until });
+  return t.unknown;
 }
 
 function amount(
@@ -121,10 +140,10 @@ function sourceLink(url: string | null, label: string, t: Copy) {
       href={link.href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`${label} — ${link.destination}`}
+      aria-label={`${label}: ${link.destination}`}
     >
       {label}
-      <span aria-hidden="true"> ↗</span>
+      <ExternalIcon />
     </a>
   ) : (
     <span>{t.unknown}</span>
@@ -166,7 +185,9 @@ export function TrustFacts({
         <dd>
           {listing.employer_identity_status === "checked" && (
             <>
-              {formattedDate(listing.employer_identity_checked_at, locale, t)} ·{" "}
+              <span>
+                {formattedDate(listing.employer_identity_checked_at, locale, t)}
+              </span>
               {sourceLink(
                 listing.employer_identity_public_source_url,
                 t.source,
@@ -192,7 +213,9 @@ export function TrustFacts({
         <dd>
           {listing.sponsor_approval_status !== "unknown" && (
             <>
-              {formattedDate(listing.sponsor_decision_at, locale, t)} ·{" "}
+              <span>
+                {formattedDate(listing.sponsor_decision_at, locale, t)}
+              </span>
               {sourceLink(listing.sponsor_decision_url, t.source, t)}
             </>
           )}
@@ -238,7 +261,7 @@ export function Conditions({
     rows.push(
       [
         t.dates,
-        `${formattedDate(listing.work_start_date, locale, t)} – ${formattedDate(listing.work_end_date, locale, t)}`,
+        dateRange(listing.work_start_date, listing.work_end_date, locale, t),
       ],
       [t.transport, plainText(listing.transport_description)],
     );
@@ -274,8 +297,10 @@ export function ListingCard({
           </span>
           <h3>{plainText(listing.role)}</h3>
           <span className="listing-location">
-            {plainText(listing.city)}, {plainText(listing.state)} ·{" "}
-            {listing.season_year}
+            <span>
+              {plainText(listing.city)}, {plainText(listing.state)}
+            </span>
+            <span>{fill(t.seasonYear, { year: listing.season_year })}</span>
           </span>
         </div>
         <strong className="listing-pay">
@@ -290,13 +315,13 @@ export function ListingCard({
           {t.housing}: {plainText(listing.housing_description) || t.unknown}
         </span>
         <span className="listing-extra">
-          {t.dates}: {formattedDate(listing.work_start_date, locale, t)}
-          {" – "}
-          {formattedDate(listing.work_end_date, locale, t)}
+          {t.dates}:{" "}
+          {dateRange(listing.work_start_date, listing.work_end_date, locale, t)}
         </span>
         <span className="listing-confirmed">
           {t.confirmed} {formattedDate(listing.last_confirmed_at, locale, t)}
         </span>
+        <LinkPending />
       </Link>
     </article>
   );
@@ -370,10 +395,11 @@ export function Reviews({
         <div className="review-grid">
           {items.map((item) => (
             <article className="review" key={item.id}>
-              <p className="eyebrow">
-                {item.season_year} ·{" "}
-                {formattedDate(item.submitted_at, locale, t)} · {t.selfReported}
+              <p className="review-meta">
+                <span>{fill(t.seasonYear, { year: item.season_year })}</span>
+                <span>{formattedDate(item.submitted_at, locale, t)}</span>
               </p>
+              <p className="review-note">{t.selfReported}</p>
               <p>
                 {t.roleReview}: {plainText(item.role)}
               </p>
