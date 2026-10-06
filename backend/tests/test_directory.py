@@ -87,6 +87,75 @@ def published(client, auth, employer_id, identifier="role-1", **changes):
     return response.json()
 
 
+def portal_session(client, secret):
+    response = client.post("/api/v1/portal/sessions", headers={"Authorization": f"Bearer {secret}"})
+    assert response.status_code == 201, response.text
+    return {
+        "X-Portal-Session": response.json()["token"],
+        "Content-Type": "application/json",
+    }
+
+
+def test_provider_portal_scopes_submissions_and_sessions(client, auth):
+    for key, name in (("provider-org", "Provider Org"), ("other-provider-org", "Other Org")):
+        response = client.post(
+            "/api/v1/admin/organizations",
+            headers=auth,
+            json={"key": key, "name": name},
+        )
+        assert response.status_code == 201, response.text
+    owner = employer(client, auth)
+    provider = portal_session(client, "test-provider-token-with-at-least-32-characters")
+    other = portal_session(client, "other-provider-token-with-at-least-32-characters")
+    operator = portal_session(client, "test-admin-token-with-at-least-32-characters")
+
+    created = client.post(
+        "/api/v1/provider/listings",
+        headers=provider,
+        json=listing_content(owner["id"], "provider-role"),
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()
+    assert item["submission_status"] == "draft"
+    assert client.get(f"/api/v1/provider/listings/{item['id']}", headers=other).status_code == 404
+    assert client.get("/api/v1/portal/submissions", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
+    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
+
+    submitted = client.post(
+        f"/api/v1/provider/listings/{item['id']}/submit",
+        headers=provider,
+        json={"expected_version": item["version"]},
+    )
+    assert submitted.status_code == 200, submitted.text
+    item = submitted.json()
+    assert item["submission_status"] == "pending"
+    assert (
+        client.put(
+            f"/api/v1/provider/listings/{item['id']}",
+            headers=provider,
+            json={"expected_version": item["version"], "content": listing_content(owner["id"])},
+        ).status_code
+        == 409
+    )
+    queue = client.get("/api/v1/portal/submissions", headers=operator)
+    assert queue.status_code == 200
+    assert [row["id"] for row in queue.json()["items"]] == [item["id"]]
+
+    approved = client.post(
+        f"/api/v1/portal/submissions/{item['id']}/approve",
+        headers=operator,
+        json={"expected_version": item["version"], "note": "official source checked"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "published"
+    assert client.get(f"/api/v1/listings/{item['id']}").status_code == 200
+
+    assert client.delete("/api/v1/portal/session", headers=provider).status_code == 204
+    assert client.get("/api/v1/portal/session", headers=provider).status_code == 401
+
+
 def test_public_visibility_filters_and_bounded_pages(client, auth):
     owner = employer(client, auth)
     first = published(client, auth, owner["id"])
@@ -1043,6 +1112,13 @@ def test_report_reason_upgrade_keeps_existing_reports(database_url):
                     "'listing', 'listing-id', 'closed', 'pending', now(), 1)"
                 )
             )
+            upgraded = connection.execute(
+                text(
+                    "SELECT organization_id, submission_status FROM listings WHERE id = 'l-upgrade'"
+                )
+            ).one()
+            assert upgraded.organization_id is None
+            assert upgraded.submission_status == "draft"
             connection.execute(text("TRUNCATE reports"))
     finally:
         command.upgrade(config, "head")
