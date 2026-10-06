@@ -17,6 +17,9 @@ if [[ ! "$history_scan" =~ [1-9][0-9]*[[:space:]]commits[[:space:]]scanned ]]; t
   exit 1
 fi
 
+shellcheck_image="koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d"
+docker run --rm --network none -v "$repo_root:/mnt:ro" -w /mnt "$shellcheck_image" scripts/*.sh
+
 "$repo_root/scripts/local-env.sh"
 export ITER_WEB_PORT=3019
 compose=(docker compose --project-name iter-directory-check --env-file "$repo_root/.env.local" -f "$repo_root/compose.local.yaml")
