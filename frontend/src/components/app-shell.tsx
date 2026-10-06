@@ -46,6 +46,7 @@ export function AppShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const locale = pathLocale(pathname);
+  const isPortal = /^\/(admin|manage|portal)(?:\/|$)/.test(pathname);
   const t = getCopy(locale);
   const targetLocale = nextLocale[locale];
   const query = searchParams.toString();
@@ -71,18 +72,20 @@ export function AppShell({
           >
             <span className="brand-initial">i</span>ter
           </Link>
-          <Link
-            className="language-switch"
-            href={languageHref}
-            hrefLang={targetLocale}
-            scroll={false}
-            aria-label={fill(t.switchLanguage, {
-              language: languageNames[targetLocale],
-            })}
-          >
-            <span className="language-code">{languageCodes[locale]}</span>
-            <LinkPending />
-          </Link>
+          {!isPortal && (
+            <Link
+              className="language-switch"
+              href={languageHref}
+              hrefLang={targetLocale}
+              scroll={false}
+              aria-label={fill(t.switchLanguage, {
+                language: languageNames[targetLocale],
+              })}
+            >
+              <span className="language-code">{languageCodes[locale]}</span>
+              <LinkPending />
+            </Link>
+          )}
         </div>
       </header>
       <main id="main">{children}</main>
@@ -92,6 +95,9 @@ export function AppShell({
             <span>
               © {year} {t.brand}
             </span>
+            <Link className="footer-manage" href="/portal/login">
+              {t.manageOffers}
+            </Link>
             <a
               className="footer-source"
               href="https://github.com/anxchywl/iter"

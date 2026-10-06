@@ -134,6 +134,53 @@ test("reduced motion uses immediate section scrolling", async ({ page }) => {
   ).toBe("auto");
 });
 
+test("provider submits an offer and an operator publishes it", async ({
+  page,
+}) => {
+  await page.goto("/portal/login");
+  await page
+    .getByLabel("Access key")
+    .fill("provider-test-000000000000000000000000");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/manage$/);
+  await page.getByLabel("Employer").selectOption("employer-1");
+  await page.getByLabel("Internal reference").fill("summer-role");
+  await page.getByLabel("Role").fill("Guest services assistant");
+  await page.getByLabel("State").fill("New York");
+  await page.getByLabel("City").fill("Albany");
+  await page.getByLabel("Job type").fill("Hospitality");
+  await page
+    .getByLabel("Official job source")
+    .fill("https://example.com/jobs/guest-services");
+  await page
+    .getByLabel("Application or contact link")
+    .fill("https://example.com/apply");
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page.getByText("Draft created.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Guest services assistant" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Submit for review" }).click();
+  await expect(page.getByText("Offer submitted for review.")).toBeVisible();
+  await expect(page.getByText("pending", { exact: true })).toBeVisible();
+
+  await page.context().clearCookies();
+  await page.goto("/portal/login");
+  await page
+    .getByLabel("Access key")
+    .fill("operator-test-000000000000000000000000");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(
+    page.getByRole("heading", { name: "Guest services assistant" }),
+  ).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept("Official source checked"));
+  await page.getByRole("button", { name: "Approve and publish" }).click();
+  await expect(page.getByText("No pending offers.")).toBeVisible();
+  await expect(page.getByText("No pending experiences.")).toBeVisible();
+  await expect(page.getByText("No pending reports.")).toBeVisible();
+});
+
 test("detail shows distinct trust facts and contact destination before leaving", async ({
   page,
 }) => {

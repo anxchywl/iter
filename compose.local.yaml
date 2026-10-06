@@ -81,6 +81,8 @@ services:
       DIRECTORY_API_URL: http://backend:8000
       DIRECTORY_DEMO_MODE: "true"
       FEEDBACK_ENABLED: "true"
+      PORTAL_COOKIE_SECURE: "false"
+      PORTAL_ORIGIN: http://127.0.0.1:${ITER_WEB_PORT:-3018}
     depends_on:
       backend:
         condition: service_healthy
