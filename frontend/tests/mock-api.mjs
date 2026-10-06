@@ -37,11 +37,114 @@ const listing = {
   last_confirmed_at: "2026-09-27T10:00:00Z",
 };
 
-createServer((request, response) => {
+const employer = {
+  id: "employer-1",
+  legal_name: "Example Employer (fictional)",
+};
+let portalListings = [];
+
+async function jsonBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
+createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1:18017");
   let status = 200;
   let body;
-  if (url.pathname === "/api/v1/listings") {
+  if (request.method === "POST" && url.pathname === "/api/v1/portal/sessions") {
+    const credential = request.headers.authorization?.replace(/^Bearer /, "");
+    const role =
+      credential === "operator-test-000000000000000000000000"
+        ? "operator"
+        : credential === "provider-test-000000000000000000000000"
+          ? "provider"
+          : null;
+    status = role ? 201 : 401;
+    body = role
+      ? {
+          token: `${role}-session`,
+          actor: `test-${role}`,
+          role,
+          organization_id: role === "provider" ? "org-1" : null,
+        }
+      : { detail: "Unauthorized" };
+  } else if (url.pathname === "/api/v1/portal/session") {
+    const token = request.headers["x-portal-session"];
+    const role =
+      token === "provider-session"
+        ? "provider"
+        : token === "operator-session"
+          ? "operator"
+          : null;
+    status = role ? (request.method === "DELETE" ? 204 : 200) : 401;
+    body = role
+      ? {
+          actor: `test-${role}`,
+          role,
+          organization_id: role === "provider" ? "org-1" : null,
+        }
+      : { detail: "Unauthorized" };
+  } else if (url.pathname === "/api/v1/portal/employers") {
+    body = { items: [employer] };
+  } else if (
+    url.pathname === "/api/v1/provider/listings" &&
+    request.method === "GET"
+  ) {
+    body = { items: portalListings };
+  } else if (
+    url.pathname === "/api/v1/provider/listings" &&
+    request.method === "POST"
+  ) {
+    const payload = await jsonBody(request);
+    const created = {
+      ...payload,
+      id: "provider-listing-1",
+      status: "draft",
+      submission_status: "draft",
+      submission_note: null,
+      version: 1,
+    };
+    portalListings = [created];
+    status = 201;
+    body = created;
+  } else if (
+    request.method === "POST" &&
+    /^\/api\/v1\/provider\/listings\/[^/]+\/submit$/.test(url.pathname)
+  ) {
+    portalListings = portalListings.map((item) => ({
+      ...item,
+      submission_status: "pending",
+      version: item.version + 1,
+    }));
+    body = portalListings[0];
+  } else if (url.pathname === "/api/v1/portal/submissions") {
+    body = {
+      items: portalListings.filter(
+        (item) => item.submission_status === "pending",
+      ),
+    };
+  } else if (
+    request.method === "GET" &&
+    (url.pathname === "/api/v1/admin/reviews" ||
+      url.pathname === "/api/v1/admin/reports")
+  ) {
+    body = { items: [], next_cursor: null };
+  } else if (
+    request.method === "POST" &&
+    /^\/api\/v1\/admin\/(reviews|reports)\/[^/]+\/[^/]+$/.test(url.pathname)
+  ) {
+    body = { status: "complete" };
+  } else if (
+    request.method === "POST" &&
+    /\/api\/v1\/portal\/submissions\/[^/]+\/(approve|changes)$/.test(
+      url.pathname,
+    )
+  ) {
+    portalListings = [];
+    body = { status: "published" };
+  } else if (url.pathname === "/api/v1/listings") {
     status = url.searchParams.get("q") === "error" ? 503 : 200;
     const match =
       !url.searchParams.has("city") ||
@@ -79,5 +182,5 @@ createServer((request, response) => {
     body = { detail: "Not found" };
   }
   response.writeHead(status, { "content-type": "application/json" });
-  response.end(JSON.stringify(body));
+  response.end(status === 204 ? undefined : JSON.stringify(body));
 }).listen(18017, "127.0.0.1");
