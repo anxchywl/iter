@@ -3,6 +3,17 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export COMPOSE_PROGRESS=quiet
+phase() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    [[ -z "${current_phase:-}" ]] || echo "::endgroup::"
+    echo "::group::$1"
+  else
+    printf '\n== %s\n' "$1"
+  fi
+  current_phase="$1"
+}
+
+phase "Secret scan"
 scan_image="ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9"
 docker run --rm --network none -v "$repo_root:/scan:ro" "$scan_image" dir --no-banner --redact --config /scan/.gitleaks.toml /scan
 git_mounts=(-v "$repo_root:/scan:ro")
@@ -17,8 +28,9 @@ if [[ ! "$history_scan" =~ [1-9][0-9]*[[:space:]]commits[[:space:]]scanned ]]; t
   exit 1
 fi
 
+phase "ShellCheck"
 shellcheck_image="koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d"
-docker run --rm --network none -v "$repo_root:/mnt:ro" -w /mnt "$shellcheck_image" scripts/*.sh
+(cd "$repo_root" && docker run --rm --network none -v "$repo_root:/mnt:ro" -w /mnt "$shellcheck_image" scripts/*.sh)
 
 "$repo_root/scripts/local-env.sh"
 export ITER_WEB_PORT=3019
@@ -28,16 +40,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+phase "Compose config and image builds"
 "${compose[@]}" --profile test config --quiet
 "${compose[@]}" --profile test build backend backend-test frontend
 "${compose[@]}" --profile test up -d --wait db-test
 "${compose[@]}" --profile test exec -T db-test createdb -U iter_test iter_migrations
 
+phase "Migrations"
 "${compose[@]}" --profile test run --rm --no-deps backend-test sh -c "DATABASE_URL=\"\${MIGRATION_DATABASE_URL}\" uv run --no-sync alembic upgrade head"
 "${compose[@]}" --profile test run --rm --no-deps backend-test sh -c "DATABASE_URL=\"\${MIGRATION_DATABASE_URL}\" uv run --no-sync alembic check"
+phase "Backend lint and tests"
 "${compose[@]}" --profile test run --rm --no-deps backend-test uv run --no-sync ruff check --no-cache app tests alembic/env.py alembic/versions
 "${compose[@]}" --profile test run --rm --no-deps backend-test uv run --no-sync ruff format --check app tests alembic/env.py alembic/versions
 "${compose[@]}" --profile test run --rm --no-deps backend-test uv run --no-sync pytest -q -p no:cacheprovider
+phase "Backup and restore rehearsal"
 "${compose[@]}" --profile test exec -T db-test pg_dump -U iter_test -Fc -f /tmp/iter_test.dump iter_test
 "${compose[@]}" --profile test exec -T db-test createdb -U iter_test iter_restore
 "${compose[@]}" --profile test exec -T db-test pg_restore -U iter_test -d iter_restore --exit-on-error /tmp/iter_test.dump
@@ -48,13 +64,16 @@ if [[ "$original_counts" != "$restored_counts" ]]; then
   echo "Disposable database restore did not reproduce row counts" >&2
   exit 1
 fi
+phase "Python dependency audit"
 "${compose[@]}" --profile test run --rm --no-deps backend-test uv audit --preview-features audit-command
 
+phase "Local stack health and seeding"
 "${compose[@]}" up -d --wait frontend
 curl --fail --silent --show-error "http://127.0.0.1:$ITER_WEB_PORT/" >/dev/null
 ITER_COMPOSE_PROJECT=iter-directory-check "$repo_root/scripts/local-seed.sh"
 ITER_COMPOSE_PROJECT=iter-directory-check "$repo_root/scripts/local-seed.sh" | grep -q "nothing to add"
 
+phase "Frontend install"
 cd "$repo_root/frontend"
 npm ci
 if [[ "${CI:-}" == "true" ]]; then
@@ -62,9 +81,12 @@ if [[ "${CI:-}" == "true" ]]; then
 else
   npx playwright install chromium
 fi
+phase "Frontend format, types, and unit tests"
 npm run format:check
 npm run typecheck
 npm test
+phase "Frontend build and browser tests"
 npm run build
 npm run test:e2e
+phase "npm dependency audit"
 npm audit --audit-level=high --fund=false
