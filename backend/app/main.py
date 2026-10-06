@@ -154,7 +154,13 @@ def create_app(
         raise RuntimeError("DATABASE_URL must be a PostgreSQL psycopg URL")
     credentials = admin_credentials or credentials_from_environment()
     engine = create_engine(url, pool_pre_ping=True)
-    app = FastAPI(title="Iter directory API", docs_url=None, redoc_url=None)
+    # environment variables must never start exporting request or error data
+    app = FastAPI(
+        title="Iter directory API",
+        docs_url=None,
+        redoc_url=None,
+        telemetry={"auto_configure": False},
+    )
     app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
     app.state.admin_credentials = credentials
     app.state.feedback_enabled = (

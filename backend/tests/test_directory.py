@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier
 
+import pytest
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -949,3 +950,17 @@ def test_concurrent_exact_report_retries_return_one_receipt(client, auth):
         responses = list(pool.map(lambda _: client.post("/api/v1/reports", json=payload), range(2)))
     assert [response.status_code for response in responses] == [202, 202]
     assert responses[0].json() == responses[1].json()
+
+
+def test_environment_cannot_enable_telemetry_export(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+    app = create_app(
+        "postgresql+psycopg://iter:unused@127.0.0.1:1/iter",
+        {"operator": "telemetry-test-token-with-at-least-32-chars"},
+        feedback_enabled=False,
+    )
+    with caplog.at_level("DEBUG", logger="fastapi"), TestClient(app):
+        pass
+    assert "automatic telemetry" not in caplog.text

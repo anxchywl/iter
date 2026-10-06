@@ -18,6 +18,8 @@ Public endpoints may read only current published vacancies and approved reviews,
 
 The review flow is visitor browser → Next.js feedback route → FastAPI validation → PostgreSQL pending review → operator redaction/decision → approved public read. The report flow uses the same entry path, then an operator-only queue and an audited decision. No student account, Telegram identity, contact details, upload, private messages, or raw client IP are stored with reviews or reports. Both services reject public submissions unless `FEEDBACK_ENABLED=true`; local Compose opts in for testing. The in-memory rate limiter sees the frontend server as the caller when writes are proxied; production traffic needs a trusted client-address mechanism and a shared limiter before public submissions are enabled. Do not treat browser-supplied forwarding headers as proof of client identity.
 
+FastAPI's built-in OpenTelemetry auto-configuration is disabled, so environment variables cannot start exporting request data, error logs, or stack traces. Adding telemetry needs its own reviewed design that excludes review text, report text, and Telegram data.
+
 Rejecting or removing a review erases its stored role and free text in the same transaction as the status change. The structured answers and content hash remain for audit and retry behavior; operator reasons must not repeat private content.
 
 `GET /api/v1/listings` accepts `q`, `season`, `state`, `city`, `category`, `start_from`, `end_by`, `min_wage` with required `wage_currency` and `wage_basis`, `min_hours`, `housing_known`, `confirmed_within_days`, `page`, and `page_size`. The API bounds page size at 50.
