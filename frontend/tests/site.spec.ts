@@ -144,27 +144,67 @@ test("student can submit a pending experience and report an issue", async ({
   page,
 }) => {
   await page.goto(`/ru/jobs/${id}`);
-  await expect(page.getByText("Одобренных отзывов: 0")).toBeVisible();
-  await page
+  await page.getByRole("button", { name: "Поделиться опытом" }).click();
+  const review = page.getByRole("dialog", { name: "Поделиться опытом" });
+  await expect(review.getByText("Шаг 1 из 3")).toBeVisible();
+  await review.getByRole("button", { name: "Далее" }).click();
+  await expect(review.getByText("Шаг 1 из 3")).toBeVisible();
+  await review
     .getByRole("textbox", { name: "Кем вы работали" })
     .fill("Front desk");
-  await page.getByLabel("Условия оплаты были понятны?").selectOption("clear");
-  await page
+  await review
+    .getByRole("group", { name: "Условия оплаты были понятны?" })
+    .getByText("Да, понятны")
+    .click();
+  await review.getByRole("button", { name: "Далее" }).click();
+  await expect(review.getByText("Шаг 2 из 3")).toBeVisible();
+  await review.getByRole("button", { name: "Назад" }).click();
+  await expect(
+    review.getByRole("textbox", { name: "Кем вы работали" }),
+  ).toHaveValue("Front desk");
+  await review.getByRole("button", { name: "Далее" }).click();
+  await review
+    .getByRole("group", { name: "Часы" })
+    .getByText("Совпало с описанием")
+    .click();
+  await review.getByRole("button", { name: "Далее" }).click();
+  await expect(review.getByText("Шаг 3 из 3")).toBeVisible();
+  await review
     .getByLabel("Дополнение по желанию (до 500 символов)")
     .fill("The hours matched");
-  await page.getByLabel(/Я понимаю, что это мой личный опыт/).check();
+  await review.getByLabel(/Я понимаю, что это мой личный опыт/).check();
   const reviewResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/feedback/reviews"),
   );
-  await page.getByRole("button", { name: "Отправить на проверку" }).click();
-  expect((await reviewResponse).status()).toBe(202);
+  await review.getByRole("button", { name: "Отправить на проверку" }).click();
+  const sent = await reviewResponse;
+  expect(sent.status()).toBe(202);
+  expect(sent.request().postDataJSON()).toMatchObject({
+    role: "Front desk",
+    pay_clarity: "clear",
+    hours_match: "yes",
+    pay_match: "unknown",
+    self_report_consent: true,
+  });
   await expect(
-    page.getByText("Получено. Отзыв ожидает проверки."),
+    review.getByText("Получено. Отзыв ожидает проверки."),
   ).toBeVisible();
-  await page.getByText("Сообщить о проблеме").click();
-  await page.getByRole("button", { name: "Отправить сообщение" }).click();
+  await review.getByRole("button", { name: "Готово" }).click();
+  await expect(review).not.toBeVisible();
+  await page.getByRole("button", { name: "Сообщить о проблеме" }).click();
+  const report = page.getByRole("dialog", { name: "Сообщить о проблеме" });
+  await expect(report.getByText("Вакансия закрыта или занята")).toBeVisible();
+  await report.getByText("Неверные или устаревшие данные").click();
+  await report.getByRole("button", { name: "Далее" }).click();
+  const reportResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/feedback/reports"),
+  );
+  await report.getByRole("button", { name: "Отправить сообщение" }).click();
+  expect((await reportResponse).request().postDataJSON()).toMatchObject({
+    reason: "inaccurate",
+  });
   await expect(
-    page.getByText("Сообщение получено. Модератор его рассмотрит."),
+    report.getByText("Сообщение получено. Модератор его рассмотрит."),
   ).toBeVisible();
 });
 
@@ -241,22 +281,22 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   await expect(page).toHaveURL(/city=Albany/);
 });
 
-test("review form focuses one field on phones and returns with done", async ({
+test("review sheet focuses one field on phones and returns with done", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/ru/jobs/${id}`);
-  const role = page.getByRole("textbox", { name: "Кем вы работали" });
+  await page.getByRole("button", { name: "Поделиться опытом" }).click();
+  const review = page.getByRole("dialog", { name: "Поделиться опытом" });
+  const role = review.getByRole("textbox", { name: "Кем вы работали" });
   await role.click();
-  await expect(page.getByLabel("Условия оплаты были понятны?")).toBeHidden();
-  await expect(
-    page.getByRole("button", { name: "Отправить на проверку" }),
-  ).toBeHidden();
+  await expect(review.getByText("Условия оплаты были понятны?")).toBeHidden();
+  await expect(review.getByRole("button", { name: "Далее" })).toBeHidden();
   await role.fill("Front desk");
-  await page.getByRole("button", { name: "Готово" }).click();
+  await review.getByRole("button", { name: "Готово" }).click();
   await expect(role).not.toBeFocused();
-  await expect(
-    page.getByRole("button", { name: "Отправить на проверку" }),
-  ).toBeVisible();
+  await expect(review.getByRole("button", { name: "Далее" })).toBeVisible();
   await expect(role).toHaveValue("Front desk");
+  await page.keyboard.press("Escape");
+  await expect(review).not.toBeVisible();
 });

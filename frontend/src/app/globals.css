@@ -1136,27 +1136,44 @@ p {
   font-size: 0.75rem;
   overflow-wrap: anywhere;
 }
-.reviews,
-.feedback-panel,
-.report-form {
-  margin-top: 0.9rem;
+.experience-actions {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
 }
-.reviews > p {
+.review-grid + .experience-actions {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.sheet-trigger {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+}
+.report-trigger {
+  padding: 0.4rem 0;
+  border: 0;
+  background: none;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .review-grid {
   display: grid;
   gap: 0.7rem;
 }
 .review {
-  padding: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: #f6f8f6;
 }
 .review-meta {
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
   gap: 0.1rem 0.75rem;
   margin: 0;
   color: var(--muted);
@@ -1186,58 +1203,215 @@ p {
   font-size: 0.78rem;
   font-weight: 700;
 }
-.feedback-panel > p {
+.steps-head {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0 1rem 0.6rem;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
 }
-.feedback-panel form,
-.report-form form {
-  display: grid;
-  gap: 0.7rem;
-  margin-top: 0.7rem;
+.step-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
 }
-.feedback-panel label,
-.report-form label {
+.step-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--teal);
+  transition: width 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.step {
   display: grid;
-  gap: 0.25rem;
-  font-size: 0.78rem;
+  gap: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.4rem 1rem 1rem;
+  border: 0;
+}
+.step[hidden] {
+  display: none;
+}
+.step-title {
+  margin: 0;
+  font-size: 1rem;
+}
+.step-title:focus {
+  outline: 0;
+}
+.step-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   font-weight: 700;
 }
-.feedback-panel input:not([type="checkbox"]),
-.feedback-panel select,
-.feedback-panel textarea,
-.report-form select,
-.report-form textarea {
+.step-field input,
+.step-field textarea {
   width: 100%;
   min-width: 0;
-  padding: 0.55rem;
+  padding: 0.65rem 0.7rem;
   border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #f7f9f7;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.88rem;
   font-weight: 400;
 }
-.feedback-panel .feedback-consent {
+.step-field input:focus,
+.step-field textarea:focus {
+  border-color: var(--teal);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(31, 105, 93, 0.14);
+}
+.chip-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.chip-group legend {
+  margin-bottom: 0.45rem;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.chip {
+  position: relative;
+}
+.chip input,
+.option-list input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.12s ease;
+}
+.chip span:active {
+  transform: scale(0.96);
+}
+.chip input:checked + span {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #fff;
+  font-weight: 700;
+}
+.chip input:focus-visible + span,
+.option-list input:focus-visible + span {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.option-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.option-list label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 50px;
+  padding: 0 0.95rem;
+  border-radius: 14px;
+  background: #f6f8f6;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+.option-list svg {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  color: var(--teal);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.option-list label:has(input:checked) {
+  background: var(--mint);
+  color: var(--teal-deep);
+  font-weight: 700;
+}
+.option-list label:has(input:checked) svg {
+  opacity: 1;
+  transform: none;
+}
+.step-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.feedback-consent {
   display: flex;
   align-items: start;
-  gap: 0.5rem;
-}
-.feedback-panel button,
-.report-form button {
-  justify-self: start;
-  padding: 0.6rem 0.8rem;
-  border: 0;
-  border-radius: 8px;
-  background: var(--teal);
-  color: white;
+  gap: 0.55rem;
   font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
 }
-.report-form summary {
-  cursor: pointer;
-  color: var(--teal-deep);
-  font-size: 0.82rem;
-  font-weight: 700;
+.feedback-consent input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0.05rem 0 0;
+  accent-color: var(--teal);
+}
+.step-status {
+  margin: 0;
+  color: #8b3730;
+  font-size: 0.78rem;
+}
+.step-status:empty {
+  display: none;
+}
+.sent-panel {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  padding: 1rem 1.2rem calc(1.4rem + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.sent-panel svg {
+  width: 46px;
+  height: 46px;
+  color: var(--teal);
+}
+.sent-panel h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+.sent-panel h3:focus {
+  outline: 0;
+}
+.sent-panel .primary-button {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
 }
 .detail-state {
   min-height: 50vh;
