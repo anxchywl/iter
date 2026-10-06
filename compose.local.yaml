@@ -49,6 +49,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://iter_local:${ITER_DB_PASSWORD}@db:5432/iter_local
       ADMIN_CREDENTIALS_JSON: '{"local-operator":"${ITER_ADMIN_TOKEN:?generate .env.local first}"}'
+      PROVIDER_CREDENTIALS_JSON: '{"demo-provider":{"secret":"${ITER_PROVIDER_TOKEN:?generate .env.local first}","organization_key":"demo-provider"}}'
       FEEDBACK_ENABLED: "true"
     depends_on:
       migrate:

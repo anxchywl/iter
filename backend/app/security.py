@@ -37,6 +37,34 @@ def load_admin_credentials(raw: str | None) -> dict[str, str]:
     return credentials
 
 
+def load_provider_credentials(raw: str | None) -> dict[str, dict[str, str]]:
+    if not raw:
+        return {}
+    try:
+        credentials = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("PROVIDER_CREDENTIALS_JSON is invalid") from exc
+    if not isinstance(credentials, dict) or any(
+        not isinstance(actor, str)
+        or not actor
+        or len(actor) > 80
+        or not isinstance(value, dict)
+        or not isinstance(value.get("secret"), str)
+        or len(value["secret"]) < 32
+        or not isinstance(value.get("organization_key"), str)
+        or not value["organization_key"]
+        or len(value["organization_key"]) > 80
+        for actor, value in credentials.items()
+    ):
+        raise RuntimeError(
+            "provider credentials require an actor, long secret, and organization key"
+        )
+    secrets = [value["secret"] for value in credentials.values()]
+    if len(secrets) != len(set(secrets)):
+        raise RuntimeError("provider credentials require distinct secrets")
+    return credentials
+
+
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -50,6 +78,17 @@ def require_admin(
     for actor, secret in request.app.state.admin_credentials.items():
         if hmac.compare_digest(given, hashlib.sha256(secret.encode()).digest()):
             return actor
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def resolve_portal_credential(request: Request, secret: str) -> tuple[str, str, str | None]:
+    given = hashlib.sha256(secret.encode()).digest()
+    for actor, expected in request.app.state.admin_credentials.items():
+        if hmac.compare_digest(given, hashlib.sha256(expected.encode()).digest()):
+            return actor, "operator", None
+    for actor, config in request.app.state.provider_credentials.items():
+        if hmac.compare_digest(given, hashlib.sha256(config["secret"].encode()).digest()):
+            return actor, "provider", config["organization_key"]
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -135,3 +174,7 @@ class WriteGuard:
 
 def credentials_from_environment() -> dict[str, str]:
     return load_admin_credentials(os.environ.get("ADMIN_CREDENTIALS_JSON"))
+
+
+def provider_credentials_from_environment() -> dict[str, dict[str, str]]:
+    return load_provider_credentials(os.environ.get("PROVIDER_CREDENTIALS_JSON"))

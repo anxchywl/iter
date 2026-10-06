@@ -62,6 +62,13 @@ class EmployerCreate(InputModel):
     _name = field_validator("legal_name")(plain_text)
 
 
+class OrganizationCreate(InputModel):
+    key: str = Field(min_length=1, max_length=80, pattern="^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=160)
+
+    _name = field_validator("name")(plain_text)
+
+
 class EmployerEdit(EmployerCreate):
     expected_version: int = Field(ge=1)
     identity_status: str = Field(default="not_checked", pattern="^(not_checked|checked|disputed)$")
@@ -173,6 +180,16 @@ class VersionedAction(InputModel):
     reason: str = Field(min_length=1, max_length=300)
 
     _reason = field_validator("reason")(plain_text)
+
+
+class SubmissionAction(InputModel):
+    expected_version: int = Field(ge=1)
+
+
+class SubmissionDecision(SubmissionAction):
+    note: str = Field(min_length=1, max_length=300)
+
+    _note = field_validator("note")(plain_text)
 
 
 class Confirmation(VersionedAction):

@@ -13,7 +13,13 @@ SEASON = datetime.now(UTC).year + 1
 TOKEN = next(iter(json.loads(os.environ["ADMIN_CREDENTIALS_JSON"]).values()))
 
 
-def call(method: str, path: str, payload: dict | None = None, admin: bool = True) -> dict:
+def call(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    admin: bool = True,
+    allow_not_found: bool = False,
+) -> dict | None:
     headers = {"Content-Type": "application/json"}
     if admin:
         headers["Authorization"] = f"Bearer {TOKEN}"
@@ -23,6 +29,8 @@ def call(method: str, path: str, payload: dict | None = None, admin: bool = True
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
+        if allow_not_found and exc.code == 404:
+            return None
         sys.exit(f"{method} {path} failed with {exc.code}: {exc.read().decode()[:300]}")
 
 
@@ -244,6 +252,12 @@ def add_review(listing_id: str, review: dict) -> None:
 
 
 def main() -> None:
+    if call("GET", "/admin/organizations/demo-provider", allow_not_found=True) is None:
+        call(
+            "POST",
+            "/admin/organizations",
+            {"key": "demo-provider", "name": f"Example Offer Provider {MARKER}"},
+        )
     existing = call("GET", f"/listings?q={urllib.parse.quote(MARKER)}&page_size=50", admin=False)
     if len(existing["items"]) == len(LISTINGS):
         print("Fictional listings are already current; nothing to add.")

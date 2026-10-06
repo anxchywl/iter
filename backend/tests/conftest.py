@@ -35,13 +35,24 @@ def client(database_url: str):
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE reports, reviews, listings, employers, audit_events RESTART IDENTITY CASCADE"
+                "TRUNCATE portal_sessions, reports, reviews, listings, employers, "
+                "organizations, audit_events RESTART IDENTITY CASCADE"
             )
         )
     engine.dispose()
     app = create_app(
         database_url,
         {"operator": "test-admin-token-with-at-least-32-characters"},
+        {
+            "provider": {
+                "secret": "test-provider-token-with-at-least-32-characters",
+                "organization_key": "provider-org",
+            },
+            "other-provider": {
+                "secret": "other-provider-token-with-at-least-32-characters",
+                "organization_key": "other-provider-org",
+            },
+        },
         feedback_enabled=True,
     )
     with TestClient(app) as test_client:
