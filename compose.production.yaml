@@ -1,0 +1,170 @@
+# production on the shared host. only iter-web joins the shared proxy network;
+# every container is named so no bare service name can collide on that network
+name: iter
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-hardened: &hardened
+  read_only: true
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging: *bounded-logging
+
+x-database-url: &database-url postgresql+psycopg://iter:${ITER_DB_PASSWORD:?ITER_DB_PASSWORD is required}@iter-postgres:5432/iter
+
+services:
+  iter-postgres:
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
+    container_name: iter-postgres
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    environment:
+      POSTGRES_DB: iter
+      POSTGRES_USER: iter
+      POSTGRES_PASSWORD: ${ITER_DB_PASSWORD:?ITER_DB_PASSWORD is required}
+    volumes:
+      - iter-postgres-data:/var/lib/postgresql/data
+    networks: [iter-data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iter -d iter"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # the host shares 3.7 GiB between several projects
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  iter-migrate:
+    <<: *hardened
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    container_name: iter-migrate
+    command: ["/opt/venv/bin/alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      iter-postgres:
+        condition: service_healthy
+    networks: [iter-data]
+    tmpfs: [/tmp]
+    mem_limit: 128m
+    restart: "no"
+
+  iter-api:
+    <<: *hardened
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    container_name: iter-api
+    environment:
+      DATABASE_URL: *database-url
+      ADMIN_CREDENTIALS_JSON: '{"host-operator":"${ITER_ADMIN_TOKEN:?ITER_ADMIN_TOKEN is required}"}'
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+      OPERATOR_TELEGRAM_IDS: ${OPERATOR_TELEGRAM_IDS:?OPERATOR_TELEGRAM_IDS is required}
+      FEEDBACK_ENABLED: ${FEEDBACK_ENABLED:-false}
+    command:
+      - /opt/venv/bin/uvicorn
+      - app.main:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --no-access-log
+    depends_on:
+      iter-migrate:
+        condition: service_completed_successfully
+    networks: [iter-data, iter-app]
+    tmpfs: [/tmp]
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/listings?page_size=1', timeout=3).close()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 192m
+    restart: unless-stopped
+
+  iter-web:
+    <<: *hardened
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
+    container_name: iter-web
+    environment:
+      DIRECTORY_API_URL: http://iter-api:8000
+      PORTAL_ORIGIN: https://${ITER_DOMAIN:?ITER_DOMAIN is required}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:?TELEGRAM_BOT_USERNAME is required}
+      TELEGRAM_APP_SHORT_NAME: ${TELEGRAM_APP_SHORT_NAME:-}
+      FEEDBACK_ENABLED: ${FEEDBACK_ENABLED:-false}
+    depends_on:
+      iter-api:
+        condition: service_healthy
+    networks: [iter-app, proxy]
+    tmpfs: [/tmp]
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # a daily custom-format dump to the host. /var/backups/iter must exist and
+  # belong to uid 999, the postgres image's user
+  iter-backup:
+    <<: *hardened
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
+    container_name: iter-backup
+    user: "999:999"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          name="/backups/iter-$$(date -u +%Y%m%dT%H%M%SZ).dump"
+          if pg_dump -h iter-postgres -U iter -d iter -Fc -f "$$name.partial" && mv "$$name.partial" "$$name"; then
+            echo "$$(date -Iseconds) backup ok"
+            ls -1t /backups/iter-*.dump | tail -n +$$(($$BACKUP_KEEP + 1)) | xargs -r rm --
+          else
+            rm -f "$$name.partial"
+            echo "$$(date -Iseconds) BACKUP FAILED"
+          fi
+          sleep 86400
+        done
+    environment:
+      PGPASSWORD: ${ITER_DB_PASSWORD:?ITER_DB_PASSWORD is required}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+    depends_on:
+      iter-postgres:
+        condition: service_healthy
+    volumes:
+      - /var/backups/iter:/backups
+    networks: [iter-data]
+    tmpfs: [/tmp]
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  iter-postgres-data:
+
+networks:
+  iter-data:
+    internal: true
+  iter-app:
+    internal: true
+  proxy:
+    external: true
+    name: wished_wished-app
