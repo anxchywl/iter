@@ -10,11 +10,14 @@ export type TelegramWindow = {
 type ParentFrame = { postMessage: (message: string, origin: string) => void };
 
 const launchKey = "iter.telegram.launch";
+const paper = "#ffffff";
 
 const startEvents: [string, object][] = [
   ["web_app_ready", {}],
   ["web_app_expand", {}],
   ["web_app_setup_swipe_behavior", { allow_vertical_swipe: false }],
+  ["web_app_set_header_color", { color: paper }],
+  ["web_app_set_background_color", { color: paper }],
 ];
 
 // telegram puts launch parameters only in the first url fragment, so keep them for later navigations
@@ -58,4 +61,21 @@ export function startTelegramApp(win: TelegramWindow): boolean {
   if (!win.TelegramWebviewProxy && !launchParams(win)) return false;
   for (const [type, data] of startEvents) postEvent(win, type, data);
   return true;
+}
+
+// a webview cannot leave the mini app by itself, so telegram opens outbound links
+export function openOutside(win: TelegramWindow, href: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  if (url.hostname === "t.me" || url.hostname === "telegram.me") {
+    return postEvent(win, "web_app_open_tg_link", {
+      path_full: `${url.pathname}${url.search}`,
+    });
+  }
+  return postEvent(win, "web_app_open_link", { url: url.href });
 }

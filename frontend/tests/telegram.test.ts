@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { miniAppLink, miniAppPortalLink, startPortal } from "../src/lib/links";
 import {
+  openOutside,
   startTelegramApp,
   telegramInitData,
   type TelegramWindow,
@@ -42,6 +43,7 @@ describe("telegram bridge", () => {
     const plain: TelegramWindow = { location: { hash: "" }, parent: null };
     plain.parent = plain;
     expect(startTelegramApp(plain)).toBe(false);
+    expect(openOutside(plain, "https://example.com")).toBe(false);
     const { win, posted } = framedWindow(
       `#tgWebAppData=${encodeURIComponent(initData)}`,
     );
@@ -50,7 +52,7 @@ describe("telegram bridge", () => {
     expect(posted).toHaveLength(0);
   });
 
-  it("expands and locks vertical swipes in native clients", () => {
+  it("expands, colors, and locks vertical swipes in native clients", () => {
     const sent: [string, unknown][] = [];
     const win: TelegramWindow = {
       location: { hash: "" },
@@ -65,12 +67,15 @@ describe("telegram bridge", () => {
       ["web_app_ready", {}],
       ["web_app_expand", {}],
       ["web_app_setup_swipe_behavior", { allow_vertical_swipe: false }],
+      ["web_app_set_header_color", { color: "#ffffff" }],
+      ["web_app_set_background_color", { color: "#ffffff" }],
     ]);
   });
 
   it("does nothing in an unknown frame without launch parameters", () => {
     const { win, posted } = framedWindow("");
     expect(startTelegramApp(win)).toBe(false);
+    expect(openOutside(win, "https://example.com")).toBe(false);
     expect(posted).toHaveLength(0);
   });
 
@@ -81,10 +86,34 @@ describe("telegram bridge", () => {
       "web_app_ready",
       "web_app_expand",
       "web_app_setup_swipe_behavior",
+      "web_app_set_header_color",
+      "web_app_set_background_color",
     ]);
     expect(new Set(posted.map((item) => item.origin))).toEqual(
       new Set(["https://web.telegram.org"]),
     );
+  });
+
+  it("opens telegram and https links through the client", () => {
+    const events: [string, string][] = [];
+    const win: TelegramWindow = {
+      location: { hash: "" },
+      parent: null,
+      TelegramWebviewProxy: {
+        postEvent: (type, data) => events.push([type, data]),
+      },
+    };
+    expect(openOutside(win, "https://t.me/validuser")).toBe(true);
+    expect(openOutside(win, "https://example.com/apply?a=1")).toBe(true);
+    expect(openOutside(win, "javascript:alert(1)")).toBe(false);
+    expect(openOutside(win, "http://example.com")).toBe(false);
+    expect(events).toEqual([
+      ["web_app_open_tg_link", JSON.stringify({ path_full: "/validuser" })],
+      [
+        "web_app_open_link",
+        JSON.stringify({ url: "https://example.com/apply?a=1" }),
+      ],
+    ]);
   });
 
   it("routes only known management start parameters", () => {
