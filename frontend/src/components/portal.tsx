@@ -6,18 +6,26 @@ import { telegramInitData, type TelegramWindow } from "@/lib/telegram";
 type Role = "operator" | "provider";
 
 type PortalIdentity = {
-  telegram_user_id: number;
+  telegram_user_id: number | null;
   role: Role | null;
   organization_name: string | null;
+  organization_address: string | null;
+  organization_website_url: string | null;
 };
 
 type Organization = {
   id: string;
   key: string;
   name: string;
+  website_url: string;
+  address: string;
   status: string;
-  member_telegram_ids: number[];
+  access_key_hint: string | null;
+  access_key_created_at: string | null;
+  version: number;
 };
+
+type IssuedAccessKey = { organizationName: string; accessKey: string };
 
 type IdentityStatus = "not_checked" | "checked" | "disputed";
 
@@ -97,11 +105,10 @@ function failure(status: number) {
 
 async function portalFetch(path: string, init?: RequestInit) {
   const initData = telegramInitData(window as unknown as TelegramWindow);
-  if (!initData) throw new PortalAccessError("outside");
   const response = await fetch(`/api/portal/${path}`, {
     ...init,
     headers: {
-      Authorization: `tma ${initData}`,
+      ...(initData ? { Authorization: `tma ${initData}` } : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
     },
   });
@@ -115,7 +122,7 @@ function reasonText(reason: unknown) {
 }
 
 type Access =
-  | { state: "loading" | "outside" | "expired" | "error" }
+  | { state: "loading" | "expired" | "error" }
   | { state: "none"; telegramId: number }
   | { state: "ready"; identity: PortalIdentity };
 
@@ -124,8 +131,9 @@ function usePortalAccess(expected: Role): Access {
   useEffect(() => {
     portalFetch("portal/me")
       .then((identity: PortalIdentity) => {
-        if (!identity.role)
+        if (!identity.role && identity.telegram_user_id)
           setAccess({ state: "none", telegramId: identity.telegram_user_id });
+        else if (!identity.role) setAccess({ state: "expired" });
         else if (identity.role !== expected)
           window.location.assign(
             identity.role === "operator" ? "/admin" : "/manage",
@@ -135,8 +143,7 @@ function usePortalAccess(expected: Role): Access {
       .catch((reason) =>
         setAccess({
           state:
-            reason instanceof PortalAccessError &&
-            (reason.message === "outside" || reason.message === "expired")
+            reason instanceof PortalAccessError && reason.message === "expired"
               ? reason.message
               : "error",
         }),
@@ -148,33 +155,38 @@ function usePortalAccess(expected: Role): Access {
 function AccessNotice({
   access,
   openLink,
+  expected,
 }: {
   access: Exclude<Access, { state: "ready" }>;
   openLink: string | null;
+  expected: Role;
 }) {
   if (access.state === "loading")
     return <p className="portal-loading">Loading workspace…</p>;
   return (
     <section className="portal-login" aria-labelledby="portal-access-title">
       <p className="portal-kicker">Offer management</p>
-      {access.state === "outside" && (
-        <>
-          <h1 id="portal-access-title">Open in Telegram</h1>
-          <p>
-            Offer management signs you in with your Telegram account, so it
-            opens only inside the iter Mini App.
-          </p>
-          {openLink && (
-            <a className="primary-button" href={openLink}>
-              Open the Mini App
-            </a>
-          )}
-        </>
-      )}
       {access.state === "expired" && (
         <>
-          <h1 id="portal-access-title">Sign-in expired</h1>
-          <p>Close the Mini App and open it again from the bot.</p>
+          <h1 id="portal-access-title">
+            {expected === "provider" ? "Company sign in" : "Open in Telegram"}
+          </h1>
+          <p>
+            {expected === "provider"
+              ? "Use the private access key issued to your company. No Telegram account is required."
+              : "The operator console opens inside the iter Mini App."}
+          </p>
+          {expected === "provider" ? (
+            <a className="primary-button" href="/portal/login">
+              Sign in with access key
+            </a>
+          ) : (
+            openLink && (
+              <a className="primary-button" href={openLink}>
+                Open the Mini App
+              </a>
+            )
+          )}
         </>
       )}
       {access.state === "none" && (
@@ -201,13 +213,93 @@ function AccessNotice({
 }
 
 function PortalHeader({ title, label }: { title: string; label: string }) {
+  async function signOut() {
+    await fetch("/api/portal/session", { method: "DELETE" });
+    window.location.assign("/portal/login");
+  }
   return (
     <div className="portal-heading">
       <div>
         <p className="portal-kicker">{label}</p>
         <h1>{title}</h1>
       </div>
+      {title === "Provider workspace" && (
+        <button type="button" className="button-secondary" onClick={signOut}>
+          Sign out
+        </button>
+      )}
     </div>
+  );
+}
+
+export function PortalLogin() {
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/portal/session", { cache: "no-store" }).then((response) => {
+      if (response.ok) window.location.replace("/manage");
+    });
+  }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError("");
+    const accessKey = String(
+      new FormData(event.currentTarget).get("access_key") || "",
+    ).trim();
+    try {
+      const response = await fetch("/api/portal/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_key: accessKey }),
+      });
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? "That access key is not valid. Check the full key and try again."
+            : "Sign in is unavailable right now. Try again shortly.",
+        );
+      window.location.assign("/manage");
+    } catch (reason) {
+      setError(reasonText(reason));
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="portal-login" aria-labelledby="portal-login-title">
+      <p className="portal-kicker">Company workspace</p>
+      <h1 id="portal-login-title">Manage your job offers</h1>
+      <p>
+        Enter the private access key issued to your company. You do not need a
+        Telegram account.
+      </p>
+      <form className="portal-form" onSubmit={submit}>
+        <label>
+          Company access key
+          <input
+            name="access_key"
+            type="password"
+            autoComplete="current-password"
+            spellCheck={false}
+            required
+          />
+        </label>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="submit" disabled={pending}>
+          {pending ? "Signing in…" : "Continue"}
+        </button>
+      </form>
+      <p className="portal-hint">
+        Keep this key private. Contact the iter team if it is lost or exposed.
+      </p>
+    </section>
   );
 }
 
@@ -397,7 +489,7 @@ function listingPayload(form: FormData) {
   };
 }
 
-export function ProviderWorkspace({ openLink }: { openLink: string | null }) {
+export function ProviderWorkspace() {
   const access = usePortalAccess("provider");
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [listings, setListings] = useState<PortalListing[]>([]);
@@ -469,13 +561,28 @@ export function ProviderWorkspace({ openLink }: { openLink: string | null }) {
   }
 
   if (access.state !== "ready")
-    return <AccessNotice access={access} openLink={openLink} />;
+    return <AccessNotice access={access} openLink={null} expected="provider" />;
   return (
     <div className="portal-page">
       <PortalHeader
         title="Provider workspace"
         label={access.identity.organization_name || "Provider"}
       />
+      <p className="portal-company-profile">
+        {access.identity.organization_address}
+        {access.identity.organization_website_url && (
+          <>
+            {" · "}
+            <a
+              href={access.identity.organization_website_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Company website
+            </a>
+          </>
+        )}
+      </p>
       {message && (
         <p className="portal-notice" role="status">
           {message}
@@ -784,6 +891,11 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [editingEmployer, setEditingEmployer] = useState<string | null>(null);
+  const [editingOrganization, setEditingOrganization] = useState<string | null>(
+    null,
+  );
+  const [confirmingKeyId, setConfirmingKeyId] = useState<string | null>(null);
+  const [issuedKey, setIssuedKey] = useState<IssuedAccessKey | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -901,52 +1013,80 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     );
   }
 
-  function createOrganization(event: FormEvent<HTMLFormElement>) {
+  async function createOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    void run(
+    setError("");
+    setMessage("");
+    try {
+      const organization = await portalFetch("admin/organizations", {
+        method: "POST",
+        body: JSON.stringify({
+          name: String(data.get("name") || "").trim(),
+          website_url: String(data.get("website_url") || "").trim(),
+          address: String(data.get("address") || "").trim(),
+        }),
+      });
+      setIssuedKey({
+        organizationName: organization.name,
+        accessKey: organization.access_key,
+      });
+      setMessage("Company profile created.");
+      form.reset();
+      await load();
+    } catch (reason) {
+      setError(reasonText(reason));
+    }
+  }
+
+  function saveOrganization(organization: Organization, data: FormData) {
+    return run(
       () =>
-        portalFetch("admin/organizations", {
-          method: "POST",
+        portalFetch(`admin/organizations/${organization.id}`, {
+          method: "PUT",
           body: JSON.stringify({
+            expected_version: organization.version,
             name: String(data.get("name") || "").trim(),
-            key: String(data.get("key") || "").trim(),
+            website_url: String(data.get("website_url") || "").trim(),
+            address: String(data.get("address") || "").trim(),
           }),
         }),
-      "Organization added.",
-    ).then((done) => done && form.reset());
+      "Company profile updated.",
+    ).then((done) => {
+      if (done) setEditingOrganization(null);
+      return done;
+    });
   }
 
-  function addMember(
-    organization: Organization,
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const id = Number(new FormData(form).get("telegram_user_id"));
-    void run(
-      () =>
-        portalFetch(`admin/organizations/${organization.key}/members`, {
-          method: "POST",
-          body: JSON.stringify({ telegram_user_id: id }),
-        }),
-      "Member added.",
-    ).then((done) => done && form.reset());
-  }
-
-  function removeMember(organization: Organization, id: number) {
-    void run(
-      () =>
-        portalFetch(`admin/organizations/${organization.key}/members/${id}`, {
-          method: "DELETE",
-        }),
-      "Member removed.",
-    );
+  async function rotateAccessKey(organization: Organization) {
+    setError("");
+    setMessage("");
+    try {
+      const result = await portalFetch(
+        `admin/organizations/${organization.id}/access-key`,
+        { method: "POST", body: "{}" },
+      );
+      setIssuedKey({
+        organizationName: organization.name,
+        accessKey: result.access_key,
+      });
+      setConfirmingKeyId(null);
+      setMessage(
+        organization.access_key_hint
+          ? "Access key replaced. Existing company sessions were signed out."
+          : "Access key created.",
+      );
+      await load();
+    } catch (reason) {
+      setError(reasonText(reason));
+    }
   }
 
   if (access.state !== "ready")
-    return <AccessNotice access={access} openLink={openLink} />;
+    return (
+      <AccessNotice access={access} openLink={openLink} expected="operator" />
+    );
   const employerName = (id: string) =>
     employers.find((item) => item.id === id)?.legal_name || "Unknown employer";
   return (
@@ -1132,71 +1272,180 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
         </div>
       </section>
       <section className="portal-panel">
-        <h2>Provider organizations</h2>
+        <h2>Companies</h2>
         <p>
-          A provider sees a Telegram ID when they open the workspace without
-          access. Add it to their organization. Removing a member ends their
-          access immediately.
+          Create the company profile first. A private access key is generated
+          automatically so the company can manage its offers in any browser.
         </p>
+        {issuedKey && (
+          <div className="portal-key" role="status">
+            <div>
+              <strong>Access key for {issuedKey.organizationName}</strong>
+              <p>Copy it now. The full key will not be shown again.</p>
+            </div>
+            <code>{issuedKey.accessKey}</code>
+            <div className="portal-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(issuedKey.accessKey).then(
+                    () => setMessage("Access key copied."),
+                    () =>
+                      setError(
+                        "Could not copy. Select the key and copy it manually.",
+                      ),
+                  );
+                }}
+              >
+                Copy key
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setIssuedKey(null)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
         <form
           className="portal-form portal-form-grid"
           onSubmit={createOrganization}
         >
           <label>
-            Organization name
+            Company name
             <input name="name" required maxLength={160} />
           </label>
           <label>
-            Short key
+            Company website
             <input
-              name="key"
+              name="website_url"
+              type="url"
+              placeholder="https://"
               required
-              maxLength={80}
-              pattern="[a-z0-9][a-z0-9\-]*"
-              title="Lowercase letters, digits, and hyphens"
             />
           </label>
+          <label className="portal-span">
+            Business address
+            <textarea name="address" required maxLength={300} rows={2} />
+          </label>
           <div className="portal-actions portal-span">
-            <button type="submit">Add organization</button>
+            <button type="submit">Create company and access key</button>
           </div>
         </form>
         <div className="portal-list">
+          {organizations.length === 0 && <p>No companies yet.</p>}
           {organizations.map((organization) => (
             <article key={organization.id} className="portal-item">
-              <div>
-                <span className="status-chip">{organization.status}</span>
-                <h3>{organization.name}</h3>
-                <p>{organization.key}</p>
-                <ul className="portal-members">
-                  {organization.member_telegram_ids.map((id) => (
-                    <li key={id}>
-                      <span>Telegram ID {id}</span>
+              {editingOrganization === organization.id ? (
+                <form
+                  className="portal-form portal-form-grid portal-span"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveOrganization(
+                      organization,
+                      new FormData(event.currentTarget),
+                    );
+                  }}
+                >
+                  <label>
+                    Company name
+                    <input
+                      name="name"
+                      defaultValue={organization.name}
+                      required
+                      maxLength={160}
+                    />
+                  </label>
+                  <label>
+                    Company website
+                    <input
+                      name="website_url"
+                      type="url"
+                      defaultValue={organization.website_url}
+                      required
+                    />
+                  </label>
+                  <label className="portal-span">
+                    Business address
+                    <textarea
+                      name="address"
+                      defaultValue={organization.address}
+                      required
+                      maxLength={300}
+                      rows={2}
+                    />
+                  </label>
+                  <div className="portal-actions portal-span">
+                    <button type="submit">Save company</button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setEditingOrganization(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div>
+                    <span className="status-chip">{organization.status}</span>
+                    <h3>{organization.name}</h3>
+                    <p>{organization.address}</p>
+                    <a
+                      href={organization.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {organization.website_url}
+                    </a>
+                    <p className="portal-hint">
+                      {organization.access_key_hint
+                        ? `Access key active · ends in ${organization.access_key_hint}`
+                        : "No access key issued"}
+                    </p>
+                  </div>
+                  <div className="portal-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setEditingOrganization(organization.id)}
+                    >
+                      Edit profile
+                    </button>
+                    {confirmingKeyId === organization.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="button-danger"
+                          onClick={() => void rotateAccessKey(organization)}
+                        >
+                          Confirm replacement
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => setConfirmingKeyId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        className="button-danger"
-                        onClick={() => removeMember(organization, id)}
+                        className="button-secondary"
+                        onClick={() => setConfirmingKeyId(organization.id)}
                       >
-                        Remove
+                        {organization.access_key_hint
+                          ? "Replace access key"
+                          : "Create access key"}
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <form
-                className="portal-form portal-member-form"
-                onSubmit={(event) => addMember(organization, event)}
-              >
-                <label>
-                  Member Telegram ID
-                  <input
-                    name="telegram_user_id"
-                    inputMode="numeric"
-                    pattern="[1-9][0-9]{0,15}"
-                    required
-                  />
-                </label>
-                <button type="submit">Add member</button>
-              </form>
+                    )}
+                  </div>
+                </>
+              )}
             </article>
           ))}
         </div>

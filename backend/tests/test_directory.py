@@ -113,20 +113,30 @@ def telegram(user_id, **options):
 
 
 def provider_organizations(client, auth):
-    for key, name, member in (
-        ("provider-org", "Provider Org", PROVIDER_TELEGRAM_ID),
-        ("other-provider-org", "Other Org", OTHER_PROVIDER_TELEGRAM_ID),
+    created = []
+    for name, website, address in (
+        ("Provider Org", "https://provider.example.com", "1 Main Street, Boston, MA"),
+        ("Other Org", "https://other.example.com", "2 State Street, Portland, ME"),
     ):
         response = client.post(
-            "/api/v1/admin/organizations", headers=auth, json={"key": key, "name": name}
-        )
-        assert response.status_code == 201, response.text
-        response = client.post(
-            f"/api/v1/admin/organizations/{key}/members",
+            "/api/v1/admin/organizations",
             headers=auth,
-            json={"telegram_user_id": member},
+            json={"name": name, "website_url": website, "address": address},
         )
         assert response.status_code == 201, response.text
+        organization = response.json()
+        session = client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": f"Bearer {organization['access_key']}"},
+        )
+        assert session.status_code == 201, session.text
+        created.append(
+            (
+                organization,
+                {"X-Portal-Session": session.json()["token"]},
+            )
+        )
+    return created
 
 
 def submitted_offer(client, provider, employer_id, identifier="provider-role", **changes):
@@ -146,19 +156,22 @@ def submitted_offer(client, provider, employer_id, identifier="provider-role", *
     return submitted.json()
 
 
-def test_provider_portal_scopes_submissions_to_telegram_members(client, auth):
-    provider_organizations(client, auth)
+def test_provider_portal_scopes_submissions_to_company_sessions(client, auth):
+    [(organization, provider), (_, other)] = provider_organizations(client, auth)
     owner = employer(client, auth)
-    provider = telegram(PROVIDER_TELEGRAM_ID)
-    other = telegram(OTHER_PROVIDER_TELEGRAM_ID)
     operator = telegram(OPERATOR_TELEGRAM_ID)
 
     identity = client.get("/api/v1/portal/me", headers=provider).json()
     assert identity == {
-        "telegram_user_id": PROVIDER_TELEGRAM_ID,
+        "telegram_user_id": None,
         "role": "provider",
         "organization_name": "Provider Org",
+        "organization_address": "1 Main Street, Boston, MA",
+        "organization_website_url": "https://provider.example.com",
     }
+    assert organization["access_key"] not in str(
+        client.get("/api/v1/admin/organizations", headers=operator).json()
+    )
     assert client.get("/api/v1/portal/me", headers=operator).json()["role"] == "operator"
 
     created = client.post(
@@ -202,11 +215,10 @@ def test_provider_portal_scopes_submissions_to_telegram_members(client, auth):
     ]
 
 
-def test_portal_rejects_unsigned_stale_or_foreign_init_data(client, auth):
-    provider_organizations(client, auth)
+def test_portal_rejects_invalid_company_keys_and_telegram_init_data(client, auth):
     now = datetime.now(UTC)
-    valid = init_data(PROVIDER_TELEGRAM_ID)
-    tampered = valid.replace("7000002", "7000003")
+    valid = init_data(OPERATOR_TELEGRAM_ID)
+    tampered = valid.replace("7000001", "7000003")
     rejected = [
         {},
         {"Authorization": f"Bearer {valid}"},
@@ -214,9 +226,9 @@ def test_portal_rejects_unsigned_stale_or_foreign_init_data(client, auth):
         {"Authorization": "tma " + valid.replace("hash=", "hash=0")},
         {"Authorization": f"tma {valid}&hash=0"},
         {"Authorization": "tma auth_date=1&user=%7B%22id%22%3A1%7D"},
-        telegram(PROVIDER_TELEGRAM_ID, token="654321:a-different-bot-token-for-signing"),
-        telegram(PROVIDER_TELEGRAM_ID, auth_date=now - timedelta(hours=9)),
-        telegram(PROVIDER_TELEGRAM_ID, auth_date=now + timedelta(minutes=5)),
+        telegram(OPERATOR_TELEGRAM_ID, token="654321:a-different-bot-token-for-signing"),
+        telegram(OPERATOR_TELEGRAM_ID, auth_date=now - timedelta(hours=9)),
+        telegram(OPERATOR_TELEGRAM_ID, auth_date=now + timedelta(minutes=5)),
         {"Authorization": f"tma {'a=' * 3000}"},
     ]
     for headers in rejected:
@@ -227,7 +239,14 @@ def test_portal_rejects_unsigned_stale_or_foreign_init_data(client, auth):
     ).status_code == 401
     assert (
         client.get("/api/v1/portal/me", headers={"Authorization": f"tma {valid}"}).json()["role"]
-        == "provider"
+        == "operator"
+    )
+    assert (
+        client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": "Bearer not-a-company-access-key"},
+        ).status_code
+        == 401
     )
 
 
@@ -237,70 +256,74 @@ def test_unknown_telegram_users_see_only_their_id(client, auth):
         "telegram_user_id": 7000099,
         "role": None,
         "organization_name": None,
+        "organization_address": None,
+        "organization_website_url": None,
     }
     for path in ("/api/v1/portal/employers", "/api/v1/provider/listings", "/api/v1/admin/audit"):
         assert client.get(path, headers=stranger).status_code == 403, path
     response = client.post(
         "/api/v1/admin/organizations",
         headers=stranger,
-        json={"key": "stranger-org", "name": "Stranger"},
+        json={
+            "name": "Stranger",
+            "website_url": "https://stranger.example.com",
+            "address": "3 Main Street",
+        },
     )
     assert response.status_code == 403
 
 
-def test_operators_manage_members_and_removal_revokes_access(client, auth):
-    provider_organizations(client, auth)
+def test_operator_manages_company_profile_and_rotates_access(client, auth):
+    [(organization, provider), _] = provider_organizations(client, auth)
     operator = telegram(OPERATOR_TELEGRAM_ID)
-    members = "/api/v1/admin/organizations/provider-org/members"
-    for member, status in (
-        (PROVIDER_TELEGRAM_ID, 409),
-        (OTHER_PROVIDER_TELEGRAM_ID, 409),
-        (OPERATOR_TELEGRAM_ID, 409),
-        (7000004, 201),
-    ):
-        response = client.post(members, headers=operator, json={"telegram_user_id": member})
-        assert response.status_code == status, (member, response.text)
-    for invalid in (0, -1, "7000005", 2**53):
-        response = client.post(members, headers=operator, json={"telegram_user_id": invalid})
-        assert response.status_code == 422, invalid
+    listed = client.get("/api/v1/admin/organizations", headers=operator).json()["items"]
+    record = next(row for row in listed if row["id"] == organization["id"])
+    assert record["address"] == "1 Main Street, Boston, MA"
+    assert record["access_key_hint"] == organization["access_key"][-8:]
+    assert "access_key" not in record and "access_key_hash" not in record
+
+    edited = client.put(
+        f"/api/v1/admin/organizations/{organization['id']}",
+        headers=operator,
+        json={
+            "expected_version": record["version"],
+            "name": "Provider Company",
+            "website_url": "https://provider.example.com",
+            "address": "10 Summer Street, Boston, MA",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 200
+    rotated = client.post(
+        f"/api/v1/admin/organizations/{organization['id']}/access-key",
+        headers=operator,
+        json={},
+    )
+    assert rotated.status_code == 200, rotated.text
+    assert rotated.json()["access_key"] != organization["access_key"]
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 401
     assert (
         client.post(
-            "/api/v1/admin/organizations/missing-org/members",
-            headers=operator,
-            json={"telegram_user_id": 7000006},
+            "/api/v1/portal/sessions",
+            headers={"Authorization": f"Bearer {organization['access_key']}"},
         ).status_code
-        == 404
+        == 401
     )
-    listed = client.get("/api/v1/admin/organizations", headers=operator).json()["items"]
-    assert {row["key"]: row["member_telegram_ids"] for row in listed} == {
-        "provider-org": [PROVIDER_TELEGRAM_ID, 7000004],
-        "other-provider-org": [OTHER_PROVIDER_TELEGRAM_ID],
-    }
-
-    provider = telegram(PROVIDER_TELEGRAM_ID)
-    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 200
-    assert (
-        client.delete(
-            f"/api/v1/admin/organizations/other-provider-org/members/{PROVIDER_TELEGRAM_ID}",
-            headers=operator,
-        ).status_code
-        == 404
+    replacement = client.post(
+        "/api/v1/portal/sessions",
+        headers={"Authorization": f"Bearer {rotated.json()['access_key']}"},
     )
-    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 204
-    assert client.get("/api/v1/portal/me", headers=provider).json()["role"] is None
-    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 403
-    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 404
+    assert replacement.status_code == 201
     actions = [
         event["action"] for event in client.get("/api/v1/admin/audit", headers=auth).json()["items"]
     ]
-    assert actions.count("member_added") == 3
-    assert actions.count("member_removed") == 1
+    assert "organization_updated" in actions
+    assert "organization_access_key_rotated" in actions
 
 
 def test_approval_applies_the_publication_rules(client, auth, database_url):
-    provider_organizations(client, auth)
+    [(_, provider), _] = provider_organizations(client, auth)
     owner = employer(client, auth)
-    provider = telegram(PROVIDER_TELEGRAM_ID)
     operator = telegram(OPERATOR_TELEGRAM_ID)
     last_year = datetime.now(UTC).year - 1
     past = submitted_offer(

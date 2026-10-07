@@ -46,7 +46,7 @@ export function AppShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const locale = pathLocale(pathname);
-  const isPortal = /^\/(admin|manage)(?:\/|$)/.test(pathname);
+  const isPortal = /^\/(admin|manage|portal)(?:\/|$)/.test(pathname);
   const t = getCopy(locale);
   const targetLocale = nextLocale[locale];
   const query = searchParams.toString();
@@ -95,7 +95,7 @@ export function AppShell({
             <span>
               © {year} {t.brand}
             </span>
-            <Link className="footer-manage" href="/manage">
+            <Link className="footer-manage" href="/portal/login">
               {t.manageOffers}
             </Link>
             <a

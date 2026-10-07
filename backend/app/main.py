@@ -4,14 +4,16 @@ import json
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from secrets import token_urlsafe
 from typing import Annotated, NamedTuple
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import create_engine, func, or_, select
+from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
@@ -21,7 +23,7 @@ from app.models import (
     Employer,
     Listing,
     Organization,
-    OrganizationMember,
+    PortalSession,
     Report,
     Review,
 )
@@ -31,8 +33,8 @@ from app.schemas import (
     EmployerEdit,
     ListingContent,
     ListingEdit,
-    MemberAdd,
     OrganizationCreate,
+    OrganizationEdit,
     ReportSubmit,
     ReviewRedaction,
     ReviewSubmit,
@@ -60,12 +62,29 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 class PortalPrincipal(NamedTuple):
     actor: str
-    telegram_user_id: int
+    telegram_user_id: int | None
     role: str | None
     organization_id: str | None
 
 
-def require_portal(request: Request, session: SessionDep) -> PortalPrincipal:
+def require_portal(
+    request: Request,
+    session: SessionDep,
+    token: Annotated[str | None, Header(alias="X-Portal-Session")] = None,
+) -> PortalPrincipal:
+    if token:
+        portal_session = session.get(PortalSession, hashlib.sha256(token.encode()).hexdigest())
+        if portal_session is None or portal_session.expires_at <= now_utc():
+            if portal_session is not None:
+                session.delete(portal_session)
+                session.commit()
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        organization = session.get(Organization, portal_session.organization_id)
+        if organization is None or organization.status != "active":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return PortalPrincipal(
+            portal_session.actor, None, portal_session.role, portal_session.organization_id
+        )
     scheme, _, init_data = request.headers.get("authorization", "").partition(" ")
     bot_token = request.app.state.telegram_bot_token
     if scheme.lower() != "tma" or not bot_token:
@@ -77,10 +96,7 @@ def require_portal(request: Request, session: SessionDep) -> PortalPrincipal:
     actor = f"telegram:{user_id}"
     if user_id in request.app.state.operator_telegram_ids:
         return PortalPrincipal(actor, user_id, "operator", None)
-    member = session.get(OrganizationMember, user_id)
-    if member is None or session.get(Organization, member.organization_id).status != "active":
-        return PortalPrincipal(actor, user_id, None, None)
-    return PortalPrincipal(actor, user_id, "provider", member.organization_id)
+    return PortalPrincipal(actor, user_id, None, None)
 
 
 PortalDep = Annotated[PortalPrincipal, Depends(require_portal)]
@@ -98,8 +114,15 @@ MemberDep = Annotated[PortalPrincipal, Depends(require_member)]
 def require_operator(
     request: Request,
     session: SessionDep,
+    token: Annotated[str | None, Header(alias="X-Portal-Session")] = None,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)] = None,
 ) -> str:
+    if token:
+        principal = require_portal(request, session, token)
+        session.rollback()
+        if principal.role != "operator":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return principal.actor
     if request.headers.get("authorization", "").partition(" ")[0].lower() == "tma":
         principal = require_portal(request, session)
         session.rollback()
@@ -217,8 +240,22 @@ def blocks_publication(session: Session, listing: Listing, moment: datetime) -> 
     )
 
 
-def admin_record(record: Employer | Listing | Review | Organization) -> dict:
+def admin_record(record: Employer | Listing | Review) -> dict:
     return {column.name: getattr(record, column.name) for column in record.__table__.columns}
+
+
+def organization_record(organization: Organization) -> dict:
+    return {
+        "id": organization.id,
+        "key": organization.key,
+        "name": organization.name,
+        "website_url": organization.website_url,
+        "address": organization.address,
+        "status": organization.status,
+        "access_key_hint": organization.access_key_hint,
+        "access_key_created_at": organization.access_key_created_at,
+        "version": organization.version,
+    }
 
 
 def locked_listing(session: Session, listing_id: str, expected_version: int) -> Listing:
@@ -501,6 +538,74 @@ def create_app(
                 return {"receipt_id": existing.id, "status": "received"}
         return {"receipt_id": report.id, "status": "received"}
 
+    @app.post("/api/v1/portal/sessions", status_code=201)
+    def create_portal_session(
+        session: SessionDep,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> dict:
+        if (
+            credentials is None
+            or credentials.scheme.lower() != "bearer"
+            or not 32 <= len(credentials.credentials) <= 256
+        ):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        organization = session.scalar(
+            select(Organization).where(
+                Organization.access_key_hash
+                == hashlib.sha256(credentials.credentials.encode()).hexdigest(),
+                Organization.status == "active",
+            )
+        )
+        if organization is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        raw_token = token_urlsafe(32)
+        moment = now_utc()
+        session.add(
+            PortalSession(
+                token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+                actor=f"company:{organization.id}",
+                role="provider",
+                organization_id=organization.id,
+                created_at=moment,
+                expires_at=moment + timedelta(hours=8),
+            )
+        )
+        session.commit()
+        return {
+            "token": raw_token,
+            "role": "provider",
+            "organization_id": organization.id,
+            "expires_at": moment + timedelta(hours=8),
+        }
+
+    @app.get("/api/v1/portal/session")
+    def read_portal_session(session: SessionDep, principal: PortalDep) -> dict:
+        organization = (
+            session.get(Organization, principal.organization_id)
+            if principal.organization_id
+            else None
+        )
+        return {
+            "role": principal.role,
+            "organization_id": principal.organization_id,
+            "organization_name": organization.name if organization else None,
+            "organization_address": organization.address if organization else None,
+            "organization_website_url": organization.website_url if organization else None,
+        }
+
+    @app.delete("/api/v1/portal/session", status_code=204)
+    def delete_portal_session(
+        session: SessionDep,
+        _: PortalDep,
+        token: Annotated[str, Header(alias="X-Portal-Session")],
+    ) -> None:
+        session.execute(
+            sa_delete(PortalSession).where(
+                PortalSession.token_hash == hashlib.sha256(token.encode()).hexdigest()
+            )
+        )
+        session.commit()
+
     @app.get("/api/v1/portal/me")
     def read_portal_identity(session: SessionDep, principal: PortalDep) -> dict:
         organization = (
@@ -512,6 +617,8 @@ def create_app(
             "telegram_user_id": principal.telegram_user_id,
             "role": principal.role,
             "organization_name": organization.name if organization else None,
+            "organization_address": organization.address if organization else None,
+            "organization_website_url": organization.website_url if organization else None,
         }
 
     @app.get("/api/v1/portal/employers")
@@ -725,17 +832,23 @@ def create_app(
     def create_organization(
         payload: OrganizationCreate, session: SessionDep, actor: AdminDep
     ) -> dict:
-        organization = Organization(**payload.model_dump(), status="active")
+        access_key = f"iter_company_{token_urlsafe(32)}"
+        organization = Organization(
+            **payload.model_dump(),
+            key=f"company-{token_urlsafe(9).lower().replace('_', '-')}",
+            status="active",
+            access_key_hash=hashlib.sha256(access_key.encode()).hexdigest(),
+            access_key_hint=access_key[-8:],
+            access_key_created_at=now_utc(),
+        )
         with session.begin():
             session.add(organization)
             session.flush()
             audit(session, actor, "organization_created", "organization", organization.id, {})
-        return jsonable_encoder(admin_record(organization))
+        return jsonable_encoder(organization_record(organization) | {"access_key": access_key})
 
-    def organization_by_key(session: Session, organization_key: str) -> Organization:
-        organization = session.scalar(
-            select(Organization).where(Organization.key == organization_key)
-        )
+    def organization_by_id(session: Session, organization_id: str) -> Organization:
+        organization = session.get(Organization, organization_id)
         if organization is None:
             raise missing()
         return organization
@@ -745,80 +858,62 @@ def create_app(
         organizations = session.scalars(
             select(Organization).order_by(Organization.name, Organization.id)
         ).all()
-        members = session.execute(
-            select(
-                OrganizationMember.organization_id, OrganizationMember.telegram_user_id
-            ).order_by(OrganizationMember.added_at, OrganizationMember.telegram_user_id)
-        ).all()
-        return {
-            "items": [
-                admin_record(organization)
-                | {
-                    "member_telegram_ids": [
-                        row.telegram_user_id
-                        for row in members
-                        if row.organization_id == organization.id
-                    ]
-                }
-                for organization in organizations
-            ]
-        }
+        return {"items": [organization_record(organization) for organization in organizations]}
 
-    @app.get("/api/v1/admin/organizations/{organization_key}")
-    def read_organization(organization_key: str, session: SessionDep, _: AdminDep) -> dict:
-        return jsonable_encoder(admin_record(organization_by_key(session, organization_key)))
+    @app.get("/api/v1/admin/organizations/{organization_id}")
+    def read_organization(organization_id: str, session: SessionDep, _: AdminDep) -> dict:
+        return jsonable_encoder(organization_record(organization_by_id(session, organization_id)))
 
-    @app.post("/api/v1/admin/organizations/{organization_key}/members", status_code=201)
-    def add_member(
-        organization_key: str,
-        payload: MemberAdd,
-        request: Request,
+    @app.put("/api/v1/admin/organizations/{organization_id}")
+    def edit_organization(
+        organization_id: str,
+        payload: OrganizationEdit,
         session: SessionDep,
         actor: AdminDep,
     ) -> dict:
-        if payload.telegram_user_id in request.app.state.operator_telegram_ids:
-            raise conflict()
+        session.rollback()
         with session.begin():
-            organization = organization_by_key(session, organization_key)
-            if session.get(OrganizationMember, payload.telegram_user_id) is not None:
-                raise conflict()
-            session.add(
-                OrganizationMember(
-                    telegram_user_id=payload.telegram_user_id,
-                    organization_id=organization.id,
-                    added_at=now_utc(),
-                )
-            )
+            organization = organization_by_id(session, organization_id)
+            session.refresh(organization, with_for_update=True)
+            checked_version(organization.version, payload.expected_version)
+            organization.name = payload.name
+            organization.website_url = payload.website_url
+            organization.address = payload.address
+            organization.version += 1
             audit(
                 session,
                 actor,
-                "member_added",
+                "organization_updated",
                 "organization",
                 organization.id,
-                {"telegram_user_id": payload.telegram_user_id},
+                {},
             )
-        return {"organization_key": organization_key, "telegram_user_id": payload.telegram_user_id}
+        return jsonable_encoder(organization_record(organization))
 
-    @app.delete(
-        "/api/v1/admin/organizations/{organization_key}/members/{member_id}", status_code=204
-    )
-    def remove_member(
-        organization_key: str, member_id: int, session: SessionDep, actor: AdminDep
-    ) -> None:
+    @app.post("/api/v1/admin/organizations/{organization_id}/access-key")
+    def rotate_organization_access_key(
+        organization_id: str, session: SessionDep, actor: AdminDep
+    ) -> dict:
+        access_key = f"iter_company_{token_urlsafe(32)}"
         with session.begin():
-            organization = organization_by_key(session, organization_key)
-            member = session.get(OrganizationMember, member_id, with_for_update=True)
-            if member is None or member.organization_id != organization.id:
-                raise missing()
-            session.delete(member)
+            organization = organization_by_id(session, organization_id)
+            session.refresh(organization, with_for_update=True)
+            organization.access_key_hash = hashlib.sha256(access_key.encode()).hexdigest()
+            organization.access_key_hint = access_key[-8:]
+            organization.access_key_created_at = now_utc()
+            organization.version += 1
+            session.execute(
+                sa_delete(PortalSession).where(PortalSession.organization_id == organization.id)
+            )
             audit(
                 session,
                 actor,
-                "member_removed",
+                "organization_access_key_rotated",
                 "organization",
                 organization.id,
-                {"telegram_user_id": member_id},
+                {},
             )
+        return jsonable_encoder(organization_record(organization) | {"access_key": access_key})
 
     @app.post("/api/v1/admin/employers", status_code=201)
     def create_employer(payload: EmployerCreate, session: SessionDep, actor: AdminDep) -> dict:

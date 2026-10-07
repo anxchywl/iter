@@ -11,8 +11,6 @@ API = "http://127.0.0.1:8000/api/v1"
 MARKER = "(fictional)"
 SEASON = datetime.now(UTC).year + 1
 TOKEN = next(iter(json.loads(os.environ["ADMIN_CREDENTIALS_JSON"]).values()))
-# matches scripts/local-portal-link.py; only the local bot token can sign for it
-LOCAL_PROVIDER_TELEGRAM_ID = 1000002
 
 
 def call(
@@ -254,22 +252,16 @@ def add_review(listing_id: str, review: dict) -> None:
 
 
 def main() -> None:
-    if call("GET", "/admin/organizations/demo-provider", allow_not_found=True) is None:
+    organizations = call("GET", "/admin/organizations")["items"]
+    if not any(item["name"] == f"Example Offer Provider {MARKER}" for item in organizations):
         call(
             "POST",
             "/admin/organizations",
-            {"key": "demo-provider", "name": f"Example Offer Provider {MARKER}"},
-        )
-    members = next(
-        item["member_telegram_ids"]
-        for item in call("GET", "/admin/organizations")["items"]
-        if item["key"] == "demo-provider"
-    )
-    if LOCAL_PROVIDER_TELEGRAM_ID not in members:
-        call(
-            "POST",
-            "/admin/organizations/demo-provider/members",
-            {"telegram_user_id": LOCAL_PROVIDER_TELEGRAM_ID},
+            {
+                "name": f"Example Offer Provider {MARKER}",
+                "website_url": "https://offer-provider.example.com",
+                "address": "100 Example Street, Boston, MA",
+            },
         )
     existing = call("GET", f"/listings?q={urllib.parse.quote(MARKER)}&page_size=50", admin=False)
     if len(existing["items"]) == len(LISTINGS):

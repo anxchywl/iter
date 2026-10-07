@@ -63,14 +63,16 @@ class EmployerCreate(InputModel):
 
 
 class OrganizationCreate(InputModel):
-    key: str = Field(min_length=1, max_length=80, pattern="^[a-z0-9][a-z0-9-]*$")
     name: str = Field(min_length=1, max_length=160)
+    website_url: str = Field(max_length=2048)
+    address: str = Field(min_length=1, max_length=300)
 
-    _name = field_validator("name")(plain_text)
+    _text = field_validator("name", "address")(plain_text)
+    _url = field_validator("website_url")(safe_url)
 
 
-class MemberAdd(InputModel):
-    telegram_user_id: int = Field(gt=0, le=2**52 - 1, strict=True)
+class OrganizationEdit(OrganizationCreate):
+    expected_version: int = Field(ge=1)
 
 
 class EmployerEdit(EmployerCreate):

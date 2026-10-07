@@ -9,19 +9,16 @@ import time
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-USERS = {"operator": (1000001, "/admin"), "provider": (1000002, "/manage")}
-
-
 def main() -> None:
-    if len(sys.argv) != 2 or sys.argv[1] not in USERS:
-        sys.exit("usage: scripts/local-portal-link.py operator|provider")
+    if sys.argv[1:] != ["operator"]:
+        sys.exit("usage: scripts/local-portal-link.py operator")
     env = dict(
         line.split("=", 1)
         for line in (Path(__file__).parents[1] / ".env.local").read_text().splitlines()
         if "=" in line
     )
     token = env["ITER_TELEGRAM_BOT_TOKEN"]
-    user_id, path = USERS[sys.argv[1]]
+    user_id, path = 1000001, "/admin"
     fields = {
         "auth_date": str(int(time.time())),
         "user": json.dumps({"id": user_id, "first_name": sys.argv[1]}, separators=(",", ":")),

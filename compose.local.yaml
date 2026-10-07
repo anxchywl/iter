@@ -83,6 +83,7 @@ services:
       DIRECTORY_DEMO_MODE: "true"
       FEEDBACK_ENABLED: "true"
       PORTAL_ORIGIN: http://127.0.0.1:${ITER_WEB_PORT:-3018}
+      PORTAL_COOKIE_SECURE: "false"
     depends_on:
       backend:
         condition: service_healthy

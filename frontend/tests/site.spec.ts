@@ -142,19 +142,24 @@ function telegramLaunch(path: string, userId: number) {
   return `${path}#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=weba`;
 }
 
-test("management asks for Telegram and shows unknown members their id", async ({
+test("companies sign in without Telegram while operators use the Mini App", async ({
   page,
 }) => {
   await page.goto("/manage");
   await expect(
-    page.getByRole("heading", { name: "Open in Telegram" }),
+    page.getByRole("heading", { name: "Company sign in" }),
   ).toBeVisible();
-  await page.goto(telegramLaunch("/manage", 5));
-  await page.reload();
+  await page.getByRole("link", { name: "Sign in with access key" }).click();
   await expect(
-    page.getByRole("heading", { name: "No access yet" }),
+    page.getByRole("heading", { name: "Manage your job offers" }),
   ).toBeVisible();
-  await expect(page.locator(".portal-id strong")).toHaveText("5");
+  await page.getByLabel("Company access key").fill("company-test-key");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/manage$/);
+  await expect(page.getByText("Example Provider")).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/portal\/login$/);
+
   await page.goto(telegramLaunch("/?tgWebAppStartParam=admin", 1));
   await expect(page).toHaveURL(/\/admin(#|$)/);
   await expect(
@@ -190,7 +195,9 @@ test("links that open Telegram hide inside the Mini App", async ({ page }) => {
 test("provider submits an offer and an operator publishes it", async ({
   page,
 }) => {
-  await page.goto(telegramLaunch("/manage", 2));
+  await page.goto("/portal/login");
+  await page.getByLabel("Company access key").fill("company-test-key");
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("Example Provider")).toBeVisible();
   await page.getByLabel("Employer").selectOption("employer-1");
   await page.getByLabel("Internal reference").fill("summer-role");
@@ -227,16 +234,24 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("No pending experiences.")).toBeVisible();
   await expect(page.getByText("No pending reports.")).toBeVisible();
 
-  await page.getByLabel("Organization name").fill("Example Agency");
-  await page.getByLabel("Short key").fill("example-agency");
-  await page.getByRole("button", { name: "Add organization" }).click();
-  await expect(page.getByText("Organization added.")).toBeVisible();
-  await page.getByLabel("Member Telegram ID").fill("123456");
-  await page.getByRole("button", { name: "Add member" }).click();
-  await expect(page.getByText("Telegram ID 123456")).toBeVisible();
-  await page.getByRole("button", { name: "Remove" }).click();
-  await expect(page.getByText("Member removed.")).toBeVisible();
-  await expect(page.getByText("Telegram ID 123456")).toHaveCount(0);
+  await page.getByLabel("Company name").fill("Example Agency");
+  await page.getByLabel("Company website").fill("https://agency.example.com");
+  await page
+    .getByLabel("Business address")
+    .fill("500 Summer Avenue, Boston, MA");
+  await page
+    .getByRole("button", { name: "Create company and access key" })
+    .click();
+  await expect(page.getByText("Company profile created.")).toBeVisible();
+  await expect(page.getByText("iter_company_mock-key")).toBeVisible();
+  await expect(
+    page.getByText("The full key will not be shown again."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByText("500 Summer Avenue, Boston, MA")).toBeVisible();
+  await page.getByRole("button", { name: "Replace access key" }).click();
+  await page.getByRole("button", { name: "Confirm replacement" }).click();
+  await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
 
   const addEmployer = page.locator("form", {
     has: page.getByRole("button", { name: "Add employer" }),

@@ -62,19 +62,52 @@ createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1:18017");
   let status = 200;
   let body;
-  if (url.pathname === "/api/v1/portal/me") {
-    // the real backend verifies the signature; the mock only reads the user id
-    const raw = request.headers.authorization?.replace(/^tma /, "") ?? "";
-    const user = JSON.parse(new URLSearchParams(raw).get("user") || "{}");
-    const role = { 1: "operator", 2: "provider" }[user.id] ?? null;
-    status = user.id ? 200 : 401;
-    body = user.id
+  if (url.pathname === "/api/v1/portal/sessions" && request.method === "POST") {
+    const valid = request.headers.authorization === "Bearer company-test-key";
+    status = valid ? 201 : 401;
+    body = valid
       ? {
-          telegram_user_id: user.id,
-          role,
-          organization_name: role === "provider" ? "Example Provider" : null,
+          token: "provider-session",
+          role: "provider",
+          organization_id: "provider-org",
         }
       : { detail: "Unauthorized" };
+  } else if (url.pathname === "/api/v1/portal/session") {
+    const valid = request.headers["x-portal-session"] === "provider-session";
+    status = valid ? (request.method === "DELETE" ? 204 : 200) : 401;
+    body = valid
+      ? {
+          role: "provider",
+          organization_id: "provider-org",
+          organization_name: "Example Provider",
+          organization_address: "100 Example Street, Boston, MA",
+          organization_website_url: "https://provider.example.com",
+        }
+      : { detail: "Unauthorized" };
+  } else if (url.pathname === "/api/v1/portal/me") {
+    if (request.headers["x-portal-session"] === "provider-session") {
+      body = {
+        telegram_user_id: null,
+        role: "provider",
+        organization_name: "Example Provider",
+        organization_address: "100 Example Street, Boston, MA",
+        organization_website_url: "https://provider.example.com",
+      };
+    } else {
+      const raw = request.headers.authorization?.replace(/^tma /, "") ?? "";
+      const user = JSON.parse(new URLSearchParams(raw).get("user") || "{}");
+      const role = user.id === 1 ? "operator" : null;
+      status = user.id ? 200 : 401;
+      body = user.id
+        ? {
+            telegram_user_id: user.id,
+            role,
+            organization_name: null,
+            organization_address: null,
+            organization_website_url: null,
+          }
+        : { detail: "Unauthorized" };
+    }
   } else if (
     url.pathname === "/api/v1/admin/organizations" &&
     request.method === "GET"
@@ -87,32 +120,36 @@ createServer(async (request, response) => {
     const payload = await jsonBody(request);
     organizations.push({
       id: `org-${organizations.length + 1}`,
+      key: `company-${organizations.length + 1}`,
       ...payload,
       status: "active",
-      member_telegram_ids: [],
+      access_key_hint: "TEST1234",
+      access_key_created_at: new Date().toISOString(),
+      version: 1,
     });
     status = 201;
-    body = organizations.at(-1);
+    body = { ...organizations.at(-1), access_key: "iter_company_mock-key" };
   } else if (
-    /^\/api\/v1\/admin\/organizations\/[^/]+\/members(\/\d+)?$/.test(
-      url.pathname,
-    )
+    request.method === "PUT" &&
+    /^\/api\/v1\/admin\/organizations\/[^/]+$/.test(url.pathname)
   ) {
-    const [, , , , , key, , member] = url.pathname.split("/");
-    const organization = organizations.find((item) => item.key === key);
-    if (request.method === "POST") {
-      const payload = await jsonBody(request);
-      organization.member_telegram_ids.push(payload.telegram_user_id);
-      status = 201;
-      body = {
-        organization_key: key,
-        telegram_user_id: payload.telegram_user_id,
-      };
-    } else {
-      organization.member_telegram_ids =
-        organization.member_telegram_ids.filter((id) => id !== Number(member));
-      status = 204;
-    }
+    const organization = organizations.find(
+      (item) => item.id === url.pathname.split("/").at(-1),
+    );
+    const payload = await jsonBody(request);
+    const { expected_version: _, ...fields } = payload;
+    Object.assign(organization, fields, { version: organization.version + 1 });
+    body = organization;
+  } else if (
+    request.method === "POST" &&
+    /^\/api\/v1\/admin\/organizations\/[^/]+\/access-key$/.test(url.pathname)
+  ) {
+    const organization = organizations.find(
+      (item) => item.id === url.pathname.split("/").at(-2),
+    );
+    organization.access_key_hint = "NEWK1234";
+    organization.version += 1;
+    body = { ...organization, access_key: "iter_company_new-mock-key" };
   } else if (url.pathname === "/api/v1/portal/employers") {
     body = { items: employers };
   } else if (
