@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -24,6 +25,23 @@ def new_id() -> str:
 
 class Base(DeclarativeBase):
     pass
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+
+    listings: Mapped[list["Listing"]] = relationship(back_populates="organization")
+
+    __table_args__ = (
+        CheckConstraint("length(trim(key)) > 0", name="organization_key_nonempty"),
+        CheckConstraint("length(trim(name)) > 0", name="organization_name_nonempty"),
+        CheckConstraint("status IN ('active', 'suspended')", name="organization_status"),
+    )
 
 
 class Employer(Base):
@@ -58,9 +76,12 @@ class Listing(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     employer_id: Mapped[str] = mapped_column(ForeignKey("employers.id"), nullable=False)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"))
     source_identifier: Mapped[str] = mapped_column(String(120), nullable=False)
     season_year: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    submission_status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft")
+    submission_note: Mapped[str | None] = mapped_column(String(300))
     state: Mapped[str] = mapped_column(String(80), nullable=False)
     city: Mapped[str] = mapped_column(String(120), nullable=False)
     location_timezone: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -97,6 +118,7 @@ class Listing(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     employer: Mapped[Employer] = relationship(back_populates="listings")
+    organization: Mapped[Organization | None] = relationship(back_populates="listings")
     reviews: Mapped[list["Review"]] = relationship(back_populates="listing")
 
     __table_args__ = (
@@ -107,6 +129,10 @@ class Listing(Base):
         CheckConstraint("version > 0", name="listing_version_positive"),
         CheckConstraint(
             "status IN ('draft', 'published', 'paused', 'closed', 'expired')", name="listing_status"
+        ),
+        CheckConstraint(
+            "submission_status IN ('draft', 'pending', 'changes_requested', 'approved')",
+            name="listing_submission_status",
         ),
         CheckConstraint(
             "length(trim(source_identifier)) > 0 AND length(trim(role)) > 0",
@@ -172,8 +198,22 @@ class Listing(Base):
         Index("ix_listings_public_location", "status", "season_year", "state", "city", "category"),
         Index("ix_listings_current", "status", "last_confirmed_at"),
         Index("ix_listings_confirmation_page", "status", "last_confirmed_at", "id"),
+        Index("ix_listings_provider_queue", "organization_id", "submission_status", "id"),
         Index("ix_listings_public_dates", "status", "work_start_date", "work_end_date"),
         Index("ix_listings_public_pay", "status", "wage_currency", "wage_basis", "wage_amount"),
+    )
+
+
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("telegram_user_id > 0", name="member_telegram_id_positive"),
+        Index("ix_organization_members_organization", "organization_id", "telegram_user_id"),
     )
 
 
@@ -262,7 +302,8 @@ class Report(Base):
     __table_args__ = (
         CheckConstraint("item_type IN ('listing', 'review')", name="report_item_type"),
         CheckConstraint(
-            "reason IN ('personal_data', 'inaccurate', 'harmful', 'other')",
+            "reason IN ('personal_data', 'inaccurate', 'harmful', 'other', "
+            "'closed', 'suspicious', 'off_topic')",
             name="report_reason",
         ),
         CheckConstraint("status IN ('pending', 'resolved', 'dismissed')", name="report_status"),

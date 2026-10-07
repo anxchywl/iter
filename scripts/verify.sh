@@ -30,10 +30,11 @@ fi
 
 phase "ShellCheck"
 shellcheck_image="koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d"
-(cd "$repo_root" && docker run --rm --network none -v "$repo_root:/mnt:ro" -w /mnt "$shellcheck_image" scripts/*.sh)
+(cd "$repo_root" && docker run --rm --network none -v "$repo_root:/mnt:ro" -w /mnt "$shellcheck_image" scripts/*.sh deploy/*.sh)
 
 "$repo_root/scripts/local-env.sh"
 export ITER_WEB_PORT=3019
+export PLAYWRIGHT_PORT="${PLAYWRIGHT_PORT:-3020}"
 compose=(docker compose --project-name iter-directory-check --env-file "$repo_root/.env.local" -f "$repo_root/compose.local.yaml")
 cleanup() {
   "${compose[@]}" --profile test down --volumes --remove-orphans >/dev/null
@@ -42,7 +43,10 @@ trap cleanup EXIT
 
 phase "Compose config and image builds"
 "${compose[@]}" --profile test config --quiet
-"${compose[@]}" --profile test build backend backend-test frontend
+ITER_DOMAIN=iter.example.com ITER_DB_PASSWORD=check ITER_ADMIN_TOKEN=check TELEGRAM_BOT_TOKEN=check \
+  OPERATOR_TELEGRAM_IDS=1 TELEGRAM_BOT_USERNAME=check BACKEND_IMAGE=check FRONTEND_IMAGE=check \
+  docker compose -f "$repo_root/compose.production.yaml" config --quiet
+"${compose[@]}" --profile test build migrate backend backend-test frontend
 "${compose[@]}" --profile test up -d --wait db-test
 "${compose[@]}" --profile test exec -T db-test createdb -U iter_test iter_migrations
 

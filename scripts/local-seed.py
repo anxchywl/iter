@@ -11,9 +11,17 @@ API = "http://127.0.0.1:8000/api/v1"
 MARKER = "(fictional)"
 SEASON = datetime.now(UTC).year + 1
 TOKEN = next(iter(json.loads(os.environ["ADMIN_CREDENTIALS_JSON"]).values()))
+# matches scripts/local-portal-link.py; only the local bot token can sign for it
+LOCAL_PROVIDER_TELEGRAM_ID = 1000002
 
 
-def call(method: str, path: str, payload: dict | None = None, admin: bool = True) -> dict:
+def call(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+    admin: bool = True,
+    allow_not_found: bool = False,
+) -> dict | None:
     headers = {"Content-Type": "application/json"}
     if admin:
         headers["Authorization"] = f"Bearer {TOKEN}"
@@ -23,6 +31,8 @@ def call(method: str, path: str, payload: dict | None = None, admin: bool = True
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
+        if allow_not_found and exc.code == 404:
+            return None
         sys.exit(f"{method} {path} failed with {exc.code}: {exc.read().decode()[:300]}")
 
 
@@ -244,6 +254,23 @@ def add_review(listing_id: str, review: dict) -> None:
 
 
 def main() -> None:
+    if call("GET", "/admin/organizations/demo-provider", allow_not_found=True) is None:
+        call(
+            "POST",
+            "/admin/organizations",
+            {"key": "demo-provider", "name": f"Example Offer Provider {MARKER}"},
+        )
+    members = next(
+        item["member_telegram_ids"]
+        for item in call("GET", "/admin/organizations")["items"]
+        if item["key"] == "demo-provider"
+    )
+    if LOCAL_PROVIDER_TELEGRAM_ID not in members:
+        call(
+            "POST",
+            "/admin/organizations/demo-provider/members",
+            {"telegram_user_id": LOCAL_PROVIDER_TELEGRAM_ID},
+        )
     existing = call("GET", f"/listings?q={urllib.parse.quote(MARKER)}&page_size=50", admin=False)
     if len(existing["items"]) == len(LISTINGS):
         print("Fictional listings are already current; nothing to add.")

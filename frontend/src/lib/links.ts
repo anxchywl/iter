@@ -1,7 +1,7 @@
 export type ContactLink = {
   href: string;
   destination: string;
-  kind: "web" | "telegram" | "email" | "phone";
+  kind: "web" | "telegram" | "whatsapp" | "email" | "phone";
 };
 
 export function safeContact(value: string): ContactLink | null {
@@ -30,6 +30,12 @@ export function safeContact(value: string): ContactLink | null {
         return null;
       return { href: url.href, destination: url.href, kind: "telegram" };
     }
+    if (
+      url.hostname === "wa.me" ||
+      url.hostname === "api.whatsapp.com" ||
+      url.hostname === "whatsapp.com"
+    )
+      return { href: url.href, destination: url.href, kind: "whatsapp" };
     return { href: url.href, destination: url.href, kind: "web" };
   } catch {
     return null;
@@ -60,4 +66,15 @@ export function startListing(
       value,
     );
   return match?.[1] ?? null;
+}
+
+export function startPortal(
+  value: string | string[] | undefined,
+): "/manage" | "/admin" | null {
+  return value === "manage" ? "/manage" : value === "admin" ? "/admin" : null;
+}
+
+export function miniAppPortalLink(target: "manage" | "admin"): string | null {
+  const base = miniAppLink();
+  return base ? `${base}=${target}` : null;
 }

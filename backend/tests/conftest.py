@@ -9,6 +9,9 @@ from sqlalchemy import create_engine, text
 from alembic import command
 from app.main import create_app
 
+TELEGRAM_BOT_TOKEN = "123456:test-bot-token-for-signing-init-data"
+OPERATOR_TELEGRAM_ID = 7000001
+
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
@@ -35,7 +38,8 @@ def client(database_url: str):
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE reports, reviews, listings, employers, audit_events RESTART IDENTITY CASCADE"
+                "TRUNCATE organization_members, reports, reviews, listings, employers, "
+                "organizations, audit_events RESTART IDENTITY CASCADE"
             )
         )
     engine.dispose()
@@ -43,6 +47,8 @@ def client(database_url: str):
         database_url,
         {"operator": "test-admin-token-with-at-least-32-characters"},
         feedback_enabled=True,
+        telegram_bot_token=TELEGRAM_BOT_TOKEN,
+        operator_telegram_ids=frozenset({OPERATOR_TELEGRAM_ID}),
     )
     with TestClient(app) as test_client:
         yield test_client

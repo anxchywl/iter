@@ -62,6 +62,17 @@ class EmployerCreate(InputModel):
     _name = field_validator("legal_name")(plain_text)
 
 
+class OrganizationCreate(InputModel):
+    key: str = Field(min_length=1, max_length=80, pattern="^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(min_length=1, max_length=160)
+
+    _name = field_validator("name")(plain_text)
+
+
+class MemberAdd(InputModel):
+    telegram_user_id: int = Field(gt=0, le=2**52 - 1, strict=True)
+
+
 class EmployerEdit(EmployerCreate):
     expected_version: int = Field(ge=1)
     identity_status: str = Field(default="not_checked", pattern="^(not_checked|checked|disputed)$")
@@ -175,6 +186,16 @@ class VersionedAction(InputModel):
     _reason = field_validator("reason")(plain_text)
 
 
+class SubmissionAction(InputModel):
+    expected_version: int = Field(ge=1)
+
+
+class SubmissionDecision(SubmissionAction):
+    note: str = Field(min_length=1, max_length=300)
+
+    _note = field_validator("note")(plain_text)
+
+
 class Confirmation(VersionedAction):
     confirmation_source_url: str = Field(max_length=2048)
 
@@ -238,7 +259,17 @@ class ReportSubmit(InputModel):
     request_id: UUID4
     item_type: str = Field(pattern="^(listing|review)$")
     item_id: str = Field(min_length=36, max_length=36)
-    reason: str = Field(pattern="^(personal_data|inaccurate|harmful|other)$")
+    reason: str = Field(
+        pattern="^(personal_data|inaccurate|harmful|other|closed|suspicious|off_topic)$"
+    )
     explanation: str | None = Field(default=None, max_length=300)
 
     _explanation = field_validator("explanation")(safe_review_text)
+
+    @model_validator(mode="after")
+    def match_reason_to_item(self) -> "ReportSubmit":
+        if self.reason in {"closed", "suspicious"} and self.item_type != "listing":
+            raise ValueError("reason applies only to listings")
+        if self.reason == "off_topic" and self.item_type != "review":
+            raise ValueError("reason applies only to reviews")
+        return self

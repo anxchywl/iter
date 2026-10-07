@@ -4,35 +4,112 @@ import json
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
 from app.db import get_session
-from app.models import AuditEvent, Employer, Listing, Report, Review
+from app.models import (
+    AuditEvent,
+    Employer,
+    Listing,
+    Organization,
+    OrganizationMember,
+    Report,
+    Review,
+)
 from app.schemas import (
     Confirmation,
     EmployerCreate,
     EmployerEdit,
     ListingContent,
     ListingEdit,
+    MemberAdd,
+    OrganizationCreate,
     ReportSubmit,
     ReviewRedaction,
     ReviewSubmit,
     SponsorAssessment,
+    SubmissionAction,
+    SubmissionDecision,
     VersionedAction,
 )
-from app.security import WriteGuard, WriteLimiter, credentials_from_environment, require_admin
+from app.security import (
+    WriteGuard,
+    WriteLimiter,
+    bearer,
+    credentials_from_environment,
+    load_operator_telegram_ids,
+    load_telegram_bot_token,
+    require_admin,
+    telegram_user_id,
+)
 
 FRESHNESS = timedelta(days=14)
+# telegram signs init data once per launch, so this bounds how long one launch stays signed in
+INIT_DATA_MAX_AGE = timedelta(hours=8)
 SessionDep = Annotated[Session, Depends(get_session)]
-AdminDep = Annotated[str, Depends(require_admin)]
+
+
+class PortalPrincipal(NamedTuple):
+    actor: str
+    telegram_user_id: int
+    role: str | None
+    organization_id: str | None
+
+
+def require_portal(request: Request, session: SessionDep) -> PortalPrincipal:
+    scheme, _, init_data = request.headers.get("authorization", "").partition(" ")
+    bot_token = request.app.state.telegram_bot_token
+    if scheme.lower() != "tma" or not bot_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        user_id = telegram_user_id(init_data, bot_token, INIT_DATA_MAX_AGE, now_utc())
+    except (ValueError, KeyError, OverflowError, OSError):
+        raise HTTPException(status_code=401, detail="Unauthorized") from None
+    actor = f"telegram:{user_id}"
+    if user_id in request.app.state.operator_telegram_ids:
+        return PortalPrincipal(actor, user_id, "operator", None)
+    member = session.get(OrganizationMember, user_id)
+    if member is None or session.get(Organization, member.organization_id).status != "active":
+        return PortalPrincipal(actor, user_id, None, None)
+    return PortalPrincipal(actor, user_id, "provider", member.organization_id)
+
+
+PortalDep = Annotated[PortalPrincipal, Depends(require_portal)]
+
+
+def require_member(principal: PortalDep) -> PortalPrincipal:
+    if principal.role is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return principal
+
+
+MemberDep = Annotated[PortalPrincipal, Depends(require_member)]
+
+
+def require_operator(
+    request: Request,
+    session: SessionDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)] = None,
+) -> str:
+    if request.headers.get("authorization", "").partition(" ")[0].lower() == "tma":
+        principal = require_portal(request, session)
+        session.rollback()
+        if principal.role != "operator":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return principal.actor
+    return require_admin(request, credentials)
+
+
+AdminDep = Annotated[str, Depends(require_operator)]
 
 
 def now_utc() -> datetime:
@@ -132,7 +209,15 @@ def listing_public(listing: Listing) -> dict:
     }
 
 
-def admin_record(record: Employer | Listing | Review) -> dict:
+def blocks_publication(session: Session, listing: Listing, moment: datetime) -> bool:
+    return (
+        listing.season_year < moment.year
+        or (listing.work_end_date is not None and listing.work_end_date < moment.date())
+        or session.get(Employer, listing.employer_id).identity_status == "disputed"
+    )
+
+
+def admin_record(record: Employer | Listing | Review | Organization) -> dict:
     return {column.name: getattr(record, column.name) for column in record.__table__.columns}
 
 
@@ -148,6 +233,8 @@ def create_app(
     database_url: str | None = None,
     admin_credentials: dict[str, str] | None = None,
     feedback_enabled: bool | None = None,
+    telegram_bot_token: str | None = None,
+    operator_telegram_ids: frozenset[int] | None = None,
 ) -> FastAPI:
     url = database_url or os.environ.get("DATABASE_URL")
     if not url or not url.startswith("postgresql+psycopg://"):
@@ -163,6 +250,14 @@ def create_app(
     )
     app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
     app.state.admin_credentials = credentials
+    app.state.telegram_bot_token = telegram_bot_token or load_telegram_bot_token(
+        os.environ.get("TELEGRAM_BOT_TOKEN")
+    )
+    app.state.operator_telegram_ids = (
+        operator_telegram_ids
+        if operator_telegram_ids is not None
+        else load_operator_telegram_ids(os.environ.get("OPERATOR_TELEGRAM_IDS"))
+    )
     app.state.feedback_enabled = (
         os.environ.get("FEEDBACK_ENABLED") == "true"
         if feedback_enabled is None
@@ -406,6 +501,325 @@ def create_app(
                 return {"receipt_id": existing.id, "status": "received"}
         return {"receipt_id": report.id, "status": "received"}
 
+    @app.get("/api/v1/portal/me")
+    def read_portal_identity(session: SessionDep, principal: PortalDep) -> dict:
+        organization = (
+            session.get(Organization, principal.organization_id)
+            if principal.organization_id
+            else None
+        )
+        return {
+            "telegram_user_id": principal.telegram_user_id,
+            "role": principal.role,
+            "organization_name": organization.name if organization else None,
+        }
+
+    @app.get("/api/v1/portal/employers")
+    def portal_employers(session: SessionDep, _: MemberDep) -> dict:
+        rows = session.scalars(select(Employer).order_by(Employer.legal_name, Employer.id)).all()
+        return {"items": [admin_record(row) for row in rows]}
+
+    @app.get("/api/v1/provider/listings")
+    def provider_listings(session: SessionDep, principal: MemberDep) -> dict:
+        if principal.role != "provider":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        rows = session.scalars(
+            select(Listing)
+            .where(Listing.organization_id == principal.organization_id)
+            .order_by(Listing.state_changed_at.desc(), Listing.id.desc())
+        ).all()
+        return {"items": [admin_record(row) for row in rows]}
+
+    @app.post("/api/v1/provider/listings", status_code=201)
+    def provider_create_listing(
+        payload: ListingContent, session: SessionDep, principal: MemberDep
+    ) -> dict:
+        if principal.role != "provider":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        session.rollback()
+        with session.begin():
+            if session.get(Employer, payload.employer_id) is None:
+                raise HTTPException(status_code=422, detail="Invalid request")
+            listing = Listing(
+                **payload.model_dump(),
+                organization_id=principal.organization_id,
+                status="draft",
+                submission_status="draft",
+                state_changed_at=now_utc(),
+            )
+            session.add(listing)
+            session.flush()
+            audit(session, principal.actor, "provider_listing_created", "listing", listing.id, {})
+        return jsonable_encoder(admin_record(listing))
+
+    def provider_listing(session: Session, principal: PortalPrincipal, listing_id: str) -> Listing:
+        if principal.role != "provider":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        listing = session.scalar(
+            select(Listing).where(
+                Listing.id == listing_id,
+                Listing.organization_id == principal.organization_id,
+            )
+        )
+        if listing is None:
+            raise missing()
+        return listing
+
+    @app.get("/api/v1/provider/listings/{listing_id}")
+    def provider_read_listing(listing_id: str, session: SessionDep, principal: MemberDep) -> dict:
+        return jsonable_encoder(admin_record(provider_listing(session, principal, listing_id)))
+
+    @app.put("/api/v1/provider/listings/{listing_id}")
+    def provider_edit_listing(
+        listing_id: str,
+        payload: ListingEdit,
+        session: SessionDep,
+        principal: MemberDep,
+    ) -> dict:
+        session.rollback()
+        with session.begin():
+            listing = provider_listing(session, principal, listing_id)
+            session.refresh(listing, with_for_update=True)
+            checked_version(listing.version, payload.expected_version)
+            if listing.status != "draft" or listing.submission_status == "pending":
+                raise conflict()
+            if listing.employer_id != payload.content.employer_id:
+                raise conflict()
+            for name, value in payload.content.model_dump().items():
+                setattr(listing, name, value)
+            listing.submission_status = "draft"
+            listing.submission_note = None
+            listing.state_changed_at = now_utc()
+            listing.version += 1
+            audit(session, principal.actor, "provider_listing_edited", "listing", listing.id, {})
+        return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/provider/listings/{listing_id}/submit")
+    def provider_submit_listing(
+        listing_id: str,
+        payload: SubmissionAction,
+        session: SessionDep,
+        principal: MemberDep,
+    ) -> dict:
+        session.rollback()
+        with session.begin():
+            listing = provider_listing(session, principal, listing_id)
+            session.refresh(listing, with_for_update=True)
+            checked_version(listing.version, payload.expected_version)
+            if listing.status != "draft" or listing.submission_status not in {
+                "draft",
+                "changes_requested",
+            }:
+                raise conflict()
+            listing.submission_status = "pending"
+            listing.submission_note = None
+            listing.state_changed_at = now_utc()
+            listing.version += 1
+            audit(session, principal.actor, "listing_submitted", "listing", listing.id, {})
+        return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/provider/listings/{listing_id}/close")
+    def provider_close_listing(
+        listing_id: str,
+        payload: SubmissionAction,
+        session: SessionDep,
+        principal: MemberDep,
+    ) -> dict:
+        session.rollback()
+        with session.begin():
+            listing = provider_listing(session, principal, listing_id)
+            session.refresh(listing, with_for_update=True)
+            checked_version(listing.version, payload.expected_version)
+            if listing.status not in {"published", "paused", "expired"}:
+                raise conflict()
+            prior = listing.status
+            listing.status = "closed"
+            listing.state_changed_at = now_utc()
+            listing.version += 1
+            audit(
+                session,
+                principal.actor,
+                "provider_listing_closed",
+                "listing",
+                listing.id,
+                {"from": prior},
+            )
+        return jsonable_encoder(admin_record(listing))
+
+    @app.get("/api/v1/portal/submissions")
+    def operator_submissions(session: SessionDep, principal: MemberDep) -> dict:
+        if principal.role != "operator":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        rows = session.scalars(
+            select(Listing)
+            .where(Listing.submission_status == "pending")
+            .order_by(Listing.state_changed_at, Listing.id)
+        ).all()
+        return {"items": [admin_record(row) for row in rows]}
+
+    @app.post("/api/v1/portal/submissions/{listing_id}/changes")
+    def request_submission_changes(
+        listing_id: str,
+        payload: SubmissionDecision,
+        session: SessionDep,
+        principal: MemberDep,
+    ) -> dict:
+        if principal.role != "operator":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        session.rollback()
+        with session.begin():
+            listing = locked_listing(session, listing_id, payload.expected_version)
+            if listing.submission_status != "pending":
+                raise conflict()
+            listing.submission_status = "changes_requested"
+            listing.submission_note = payload.note
+            listing.version += 1
+            audit(
+                session,
+                principal.actor,
+                "listing_changes_requested",
+                "listing",
+                listing.id,
+                {"note": payload.note},
+            )
+        return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/portal/submissions/{listing_id}/approve")
+    def approve_submission(
+        listing_id: str,
+        payload: SubmissionDecision,
+        session: SessionDep,
+        principal: MemberDep,
+    ) -> dict:
+        if principal.role != "operator":
+            raise HTTPException(status_code=403, detail="Forbidden")
+        session.rollback()
+        with session.begin():
+            listing = locked_listing(session, listing_id, payload.expected_version)
+            moment = now_utc()
+            if (
+                listing.status != "draft"
+                or listing.submission_status != "pending"
+                or blocks_publication(session, listing, moment)
+            ):
+                raise conflict()
+            listing.last_confirmed_at = moment
+            listing.confirmation_source_url = listing.official_source_url
+            listing.published_at = moment
+            listing.status = "published"
+            listing.submission_status = "approved"
+            listing.submission_note = None
+            listing.state_changed_at = moment
+            listing.version += 1
+            audit(
+                session,
+                principal.actor,
+                "listing_approved",
+                "listing",
+                listing.id,
+                {"reason": payload.note, "source_url": listing.official_source_url},
+            )
+        return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/admin/organizations", status_code=201)
+    def create_organization(
+        payload: OrganizationCreate, session: SessionDep, actor: AdminDep
+    ) -> dict:
+        organization = Organization(**payload.model_dump(), status="active")
+        with session.begin():
+            session.add(organization)
+            session.flush()
+            audit(session, actor, "organization_created", "organization", organization.id, {})
+        return jsonable_encoder(admin_record(organization))
+
+    def organization_by_key(session: Session, organization_key: str) -> Organization:
+        organization = session.scalar(
+            select(Organization).where(Organization.key == organization_key)
+        )
+        if organization is None:
+            raise missing()
+        return organization
+
+    @app.get("/api/v1/admin/organizations")
+    def list_organizations(session: SessionDep, _: AdminDep) -> dict:
+        organizations = session.scalars(
+            select(Organization).order_by(Organization.name, Organization.id)
+        ).all()
+        members = session.execute(
+            select(
+                OrganizationMember.organization_id, OrganizationMember.telegram_user_id
+            ).order_by(OrganizationMember.added_at, OrganizationMember.telegram_user_id)
+        ).all()
+        return {
+            "items": [
+                admin_record(organization)
+                | {
+                    "member_telegram_ids": [
+                        row.telegram_user_id
+                        for row in members
+                        if row.organization_id == organization.id
+                    ]
+                }
+                for organization in organizations
+            ]
+        }
+
+    @app.get("/api/v1/admin/organizations/{organization_key}")
+    def read_organization(organization_key: str, session: SessionDep, _: AdminDep) -> dict:
+        return jsonable_encoder(admin_record(organization_by_key(session, organization_key)))
+
+    @app.post("/api/v1/admin/organizations/{organization_key}/members", status_code=201)
+    def add_member(
+        organization_key: str,
+        payload: MemberAdd,
+        request: Request,
+        session: SessionDep,
+        actor: AdminDep,
+    ) -> dict:
+        if payload.telegram_user_id in request.app.state.operator_telegram_ids:
+            raise conflict()
+        with session.begin():
+            organization = organization_by_key(session, organization_key)
+            if session.get(OrganizationMember, payload.telegram_user_id) is not None:
+                raise conflict()
+            session.add(
+                OrganizationMember(
+                    telegram_user_id=payload.telegram_user_id,
+                    organization_id=organization.id,
+                    added_at=now_utc(),
+                )
+            )
+            audit(
+                session,
+                actor,
+                "member_added",
+                "organization",
+                organization.id,
+                {"telegram_user_id": payload.telegram_user_id},
+            )
+        return {"organization_key": organization_key, "telegram_user_id": payload.telegram_user_id}
+
+    @app.delete(
+        "/api/v1/admin/organizations/{organization_key}/members/{member_id}", status_code=204
+    )
+    def remove_member(
+        organization_key: str, member_id: int, session: SessionDep, actor: AdminDep
+    ) -> None:
+        with session.begin():
+            organization = organization_by_key(session, organization_key)
+            member = session.get(OrganizationMember, member_id, with_for_update=True)
+            if member is None or member.organization_id != organization.id:
+                raise missing()
+            session.delete(member)
+            audit(
+                session,
+                actor,
+                "member_removed",
+                "organization",
+                organization.id,
+                {"telegram_user_id": member_id},
+            )
+
     @app.post("/api/v1/admin/employers", status_code=201)
     def create_employer(payload: EmployerCreate, session: SessionDep, actor: AdminDep) -> dict:
         with session.begin():
@@ -593,14 +1007,12 @@ def create_app(
                 if (
                     listing.last_confirmed_at is None
                     or listing.last_confirmed_at <= moment - FRESHNESS
-                    or listing.season_year < moment.year
-                    or (listing.work_end_date is not None and listing.work_end_date < moment.date())
                     or listing.confirmation_source_url is None
                     or (
                         previous in {"paused", "expired"}
                         and listing.last_confirmed_at <= listing.state_changed_at
                     )
-                    or session.get(Employer, listing.employer_id).identity_status == "disputed"
+                    or blocks_publication(session, listing, moment)
                 ):
                     raise conflict()
                 listing.published_at = moment

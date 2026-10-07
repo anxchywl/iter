@@ -1,8 +1,12 @@
+import hashlib
+import hmac
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier
+from urllib.parse import urlencode
 
 import pytest
 from alembic.config import Config
@@ -11,6 +15,10 @@ from sqlalchemy import create_engine, text
 
 from alembic import command
 from app.main import create_app
+from tests.conftest import OPERATOR_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
+
+PROVIDER_TELEGRAM_ID = 7000002
+OTHER_PROVIDER_TELEGRAM_ID = 7000003
 
 
 def employer(client, auth):
@@ -85,6 +93,246 @@ def published(client, auth, employer_id, identifier="role-1", **changes):
     response = action(client, auth, item["id"], "publish", item["version"])
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def init_data(user_id, auth_date=None, token=TELEGRAM_BOT_TOKEN, **extra):
+    fields = {
+        "auth_date": str(int((auth_date or datetime.now(UTC)).timestamp())),
+        "query_id": "AAH-test",
+        "user": json.dumps({"id": user_id, "first_name": "Test"}),
+        **extra,
+    }
+    check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    fields["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return urlencode(fields)
+
+
+def telegram(user_id, **options):
+    return {"Authorization": f"tma {init_data(user_id, **options)}"}
+
+
+def provider_organizations(client, auth):
+    for key, name, member in (
+        ("provider-org", "Provider Org", PROVIDER_TELEGRAM_ID),
+        ("other-provider-org", "Other Org", OTHER_PROVIDER_TELEGRAM_ID),
+    ):
+        response = client.post(
+            "/api/v1/admin/organizations", headers=auth, json={"key": key, "name": name}
+        )
+        assert response.status_code == 201, response.text
+        response = client.post(
+            f"/api/v1/admin/organizations/{key}/members",
+            headers=auth,
+            json={"telegram_user_id": member},
+        )
+        assert response.status_code == 201, response.text
+
+
+def submitted_offer(client, provider, employer_id, identifier="provider-role", **changes):
+    created = client.post(
+        "/api/v1/provider/listings",
+        headers=provider,
+        json=listing_content(employer_id, identifier, **changes),
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()
+    submitted = client.post(
+        f"/api/v1/provider/listings/{item['id']}/submit",
+        headers=provider,
+        json={"expected_version": item["version"]},
+    )
+    assert submitted.status_code == 200, submitted.text
+    return submitted.json()
+
+
+def test_provider_portal_scopes_submissions_to_telegram_members(client, auth):
+    provider_organizations(client, auth)
+    owner = employer(client, auth)
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    other = telegram(OTHER_PROVIDER_TELEGRAM_ID)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+
+    identity = client.get("/api/v1/portal/me", headers=provider).json()
+    assert identity == {
+        "telegram_user_id": PROVIDER_TELEGRAM_ID,
+        "role": "provider",
+        "organization_name": "Provider Org",
+    }
+    assert client.get("/api/v1/portal/me", headers=operator).json()["role"] == "operator"
+
+    created = client.post(
+        "/api/v1/provider/listings",
+        headers=provider,
+        json=listing_content(owner["id"], "provider-role", status="published"),
+    )
+    assert created.status_code == 422
+    item = submitted_offer(client, provider, owner["id"])
+    assert item["submission_status"] == "pending"
+    assert client.get(f"/api/v1/provider/listings/{item['id']}", headers=other).status_code == 404
+    assert client.get("/api/v1/provider/listings", headers=other).json()["items"] == []
+    assert client.get("/api/v1/portal/submissions", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/organizations", headers=provider).status_code == 403
+    assert client.get("/api/v1/provider/listings", headers=operator).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
+    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
+    assert (
+        client.put(
+            f"/api/v1/provider/listings/{item['id']}",
+            headers=provider,
+            json={"expected_version": item["version"], "content": listing_content(owner["id"])},
+        ).status_code
+        == 409
+    )
+    queue = client.get("/api/v1/portal/submissions", headers=operator)
+    assert [row["id"] for row in queue.json()["items"]] == [item["id"]]
+
+    approved = client.post(
+        f"/api/v1/portal/submissions/{item['id']}/approve",
+        headers=operator,
+        json={"expected_version": item["version"], "note": "official source checked"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "published"
+    assert client.get(f"/api/v1/listings/{item['id']}").status_code == 200
+    events = client.get("/api/v1/admin/audit", headers=auth).json()["items"]
+    assert {"actor": f"telegram:{OPERATOR_TELEGRAM_ID}", "action": "listing_approved"} in [
+        {"actor": event["actor"], "action": event["action"]} for event in events
+    ]
+
+
+def test_portal_rejects_unsigned_stale_or_foreign_init_data(client, auth):
+    provider_organizations(client, auth)
+    now = datetime.now(UTC)
+    valid = init_data(PROVIDER_TELEGRAM_ID)
+    tampered = valid.replace("7000002", "7000003")
+    rejected = [
+        {},
+        {"Authorization": f"Bearer {valid}"},
+        {"Authorization": f"tma {tampered}"},
+        {"Authorization": "tma " + valid.replace("hash=", "hash=0")},
+        {"Authorization": f"tma {valid}&hash=0"},
+        {"Authorization": "tma auth_date=1&user=%7B%22id%22%3A1%7D"},
+        telegram(PROVIDER_TELEGRAM_ID, token="654321:a-different-bot-token-for-signing"),
+        telegram(PROVIDER_TELEGRAM_ID, auth_date=now - timedelta(hours=9)),
+        telegram(PROVIDER_TELEGRAM_ID, auth_date=now + timedelta(minutes=5)),
+        {"Authorization": f"tma {'a=' * 3000}"},
+    ]
+    for headers in rejected:
+        assert client.get("/api/v1/portal/me", headers=headers).status_code == 401, headers
+        assert client.get("/api/v1/provider/listings", headers=headers).status_code == 401
+    assert (
+        client.get("/api/v1/admin/reviews", headers={"Authorization": f"tma {tampered}"})
+    ).status_code == 401
+    assert (
+        client.get("/api/v1/portal/me", headers={"Authorization": f"tma {valid}"}).json()["role"]
+        == "provider"
+    )
+
+
+def test_unknown_telegram_users_see_only_their_id(client, auth):
+    stranger = telegram(7000099)
+    assert client.get("/api/v1/portal/me", headers=stranger).json() == {
+        "telegram_user_id": 7000099,
+        "role": None,
+        "organization_name": None,
+    }
+    for path in ("/api/v1/portal/employers", "/api/v1/provider/listings", "/api/v1/admin/audit"):
+        assert client.get(path, headers=stranger).status_code == 403, path
+    response = client.post(
+        "/api/v1/admin/organizations",
+        headers=stranger,
+        json={"key": "stranger-org", "name": "Stranger"},
+    )
+    assert response.status_code == 403
+
+
+def test_operators_manage_members_and_removal_revokes_access(client, auth):
+    provider_organizations(client, auth)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+    members = "/api/v1/admin/organizations/provider-org/members"
+    for member, status in (
+        (PROVIDER_TELEGRAM_ID, 409),
+        (OTHER_PROVIDER_TELEGRAM_ID, 409),
+        (OPERATOR_TELEGRAM_ID, 409),
+        (7000004, 201),
+    ):
+        response = client.post(members, headers=operator, json={"telegram_user_id": member})
+        assert response.status_code == status, (member, response.text)
+    for invalid in (0, -1, "7000005", 2**53):
+        response = client.post(members, headers=operator, json={"telegram_user_id": invalid})
+        assert response.status_code == 422, invalid
+    assert (
+        client.post(
+            "/api/v1/admin/organizations/missing-org/members",
+            headers=operator,
+            json={"telegram_user_id": 7000006},
+        ).status_code
+        == 404
+    )
+    listed = client.get("/api/v1/admin/organizations", headers=operator).json()["items"]
+    assert {row["key"]: row["member_telegram_ids"] for row in listed} == {
+        "provider-org": [PROVIDER_TELEGRAM_ID, 7000004],
+        "other-provider-org": [OTHER_PROVIDER_TELEGRAM_ID],
+    }
+
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 200
+    assert (
+        client.delete(
+            f"/api/v1/admin/organizations/other-provider-org/members/{PROVIDER_TELEGRAM_ID}",
+            headers=operator,
+        ).status_code
+        == 404
+    )
+    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 204
+    assert client.get("/api/v1/portal/me", headers=provider).json()["role"] is None
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 403
+    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 404
+    actions = [
+        event["action"] for event in client.get("/api/v1/admin/audit", headers=auth).json()["items"]
+    ]
+    assert actions.count("member_added") == 3
+    assert actions.count("member_removed") == 1
+
+
+def test_approval_applies_the_publication_rules(client, auth, database_url):
+    provider_organizations(client, auth)
+    owner = employer(client, auth)
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+    last_year = datetime.now(UTC).year - 1
+    past = submitted_offer(
+        client,
+        provider,
+        owner["id"],
+        "past-role",
+        season_year=last_year,
+        work_start_date=f"{last_year}-06-01",
+        work_end_date=f"{last_year}-08-30",
+    )
+    current = submitted_offer(client, provider, owner["id"], "current-role")
+    disputed = client.put(
+        f"/api/v1/admin/employers/{owner['id']}",
+        headers=auth,
+        json={
+            "expected_version": owner["version"],
+            "legal_name": owner["legal_name"],
+            "official_website_url": owner["official_website_url"],
+            "identity_status": "disputed",
+            "identity_source_url": "https://example.org/registry",
+        },
+    )
+    assert disputed.status_code == 200, disputed.text
+    for item in (past, current):
+        response = client.post(
+            f"/api/v1/portal/submissions/{item['id']}/approve",
+            headers=operator,
+            json={"expected_version": item["version"], "note": "official source checked"},
+        )
+        assert response.status_code == 409, item["source_identifier"]
+        assert client.get(f"/api/v1/listings/{item['id']}").status_code == 404
 
 
 def test_public_visibility_filters_and_bounded_pages(client, auth):
@@ -553,6 +801,32 @@ def test_reports_are_private_idempotent_and_audited(client, auth):
     assert events["items"][0]["details"]["to"] == "resolved"
 
 
+def test_report_reasons_must_match_the_reported_item(client, auth):
+    owner = employer(client, auth)
+    item = published(client, auth, owner["id"])
+    listing_report = {
+        "request_id": "3f0f7f8e-8c39-4a52-9a43-2f6b3b0c6a10",
+        "item_type": "listing",
+        "item_id": item["id"],
+        "reason": "closed",
+    }
+    assert client.post("/api/v1/reports", json=listing_report).status_code == 202
+    for reason in ("off_topic", "unknown"):
+        rejected = {
+            **listing_report,
+            "request_id": "8c1d6a7e-2b4f-4c1e-9d3a-5e6f7a8b9c0d",
+            "reason": reason,
+        }
+        assert client.post("/api/v1/reports", json=rejected).status_code == 422
+    review_report = {
+        **listing_report,
+        "request_id": "a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d",
+        "item_type": "review",
+        "reason": "suspicious",
+    }
+    assert client.post("/api/v1/reports", json=review_report).status_code == 422
+
+
 def test_public_submissions_are_disabled_by_default(client, auth, database_url, monkeypatch):
     owner = employer(client, auth)
     item = published(client, auth, owner["id"])
@@ -964,3 +1238,71 @@ def test_environment_cannot_enable_telemetry_export(
     with caplog.at_level("DEBUG", logger="fastapi"), TestClient(app):
         pass
     assert "automatic telemetry" not in caplog.text
+
+
+def test_report_reason_upgrade_keeps_existing_reports(database_url):
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    engine = create_engine(database_url)
+    old = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("TRUNCATE reports, listings, employers CASCADE"))
+        command.downgrade(config, "c4f20690e0aa")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO employers (id, legal_name, official_website_url, "
+                    "identity_status, version) VALUES ('e-upgrade', 'Upgrade Employer', "
+                    "'https://example.com', 'not_checked', 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO listings (id, employer_id, source_identifier, season_year, "
+                    "status, state, city, location_timezone, category, role, official_source_url, "
+                    "contact_url, sponsor_route_status, sponsor_approval_status, state_changed_at, "
+                    "version) VALUES ('l-upgrade', 'e-upgrade', 'upgrade-role', 2027, 'draft', "
+                    "'New York', 'Albany', 'America/New_York', 'Hospitality', 'Desk assistant', "
+                    "'https://example.com/jobs/upgrade', 'https://example.com/apply', "
+                    "'not_reported', 'unknown', now(), 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO reports (id, request_id, content_hash, item_type, item_id, "
+                    "reason, status, submitted_at, version) VALUES ('r-old', 'q-old', 'h', "
+                    "'listing', 'listing-id', 'harmful', 'pending', now(), 1)"
+                )
+            )
+        command.upgrade(config, "head")
+        with engine.begin() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT reason FROM reports WHERE id = 'r-old'")
+                ).scalar_one()
+                == "harmful"
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO reports (id, request_id, content_hash, item_type, item_id, "
+                    "reason, status, submitted_at, version) VALUES ('r-new', 'q-new', 'h', "
+                    "'listing', 'listing-id', 'closed', 'pending', now(), 1)"
+                )
+            )
+            upgraded = connection.execute(
+                text(
+                    "SELECT organization_id, submission_status FROM listings WHERE id = 'l-upgrade'"
+                )
+            ).one()
+            assert upgraded.organization_id is None
+            assert upgraded.submission_status == "draft"
+            connection.execute(text("TRUNCATE reports"))
+    finally:
+        command.upgrade(config, "head")
+        engine.dispose()
+        if old is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = old

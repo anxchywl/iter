@@ -2,11 +2,14 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from secrets import token_bytes
 from typing import Annotated, Any
+from urllib.parse import parse_qsl
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -35,6 +38,53 @@ def load_admin_credentials(raw: str | None) -> dict[str, str]:
     ):
         raise RuntimeError("admin credentials require distinct operators and long secrets")
     return credentials
+
+
+TELEGRAM_ID_LIMIT = 2**52 - 1
+
+
+def load_operator_telegram_ids(raw: str | None) -> frozenset[int]:
+    if not raw or not raw.strip():
+        return frozenset()
+    ids = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part.isdigit() or not 0 < int(part) <= TELEGRAM_ID_LIMIT:
+            raise RuntimeError("OPERATOR_TELEGRAM_IDS must list positive Telegram user IDs")
+        ids.add(int(part))
+    return frozenset(ids)
+
+
+def load_telegram_bot_token(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    if not re.fullmatch(r"[0-9]{1,20}:[A-Za-z0-9_-]{30,64}", raw):
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is invalid")
+    return raw
+
+
+def telegram_user_id(init_data: str, bot_token: str, max_age: timedelta, now: datetime) -> int:
+    if not init_data or len(init_data) > 4096:
+        raise ValueError("invalid init data")
+    pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True, max_num_fields=32)
+    fields = dict(pairs)
+    if len(fields) != len(pairs):
+        raise ValueError("duplicate init data fields")
+    received = fields.pop("hash", "")
+    check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    expected = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, received):
+        raise ValueError("invalid init data signature")
+    auth_date = datetime.fromtimestamp(int(fields["auth_date"]), UTC)
+    # a future auth date would otherwise never expire
+    if not now - max_age <= auth_date <= now + timedelta(minutes=1):
+        raise ValueError("expired init data")
+    user = json.loads(fields["user"])
+    user_id = user.get("id") if isinstance(user, dict) else None
+    if type(user_id) is not int or not 0 < user_id <= TELEGRAM_ID_LIMIT:
+        raise ValueError("invalid init data user")
+    return user_id
 
 
 bearer = HTTPBearer(auto_error=False)
