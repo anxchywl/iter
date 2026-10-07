@@ -33,6 +33,8 @@ if docker ps --format '{{.Names}}' | grep -qx iter-backup; then
   docker exec iter-backup sh -c \
     "pg_dump -h iter-postgres -U iter -d iter -Fc -f /backups/pre-deploy-$stamp.dump"
   echo "pre-deploy backup: /var/backups/iter/pre-deploy-$stamp.dump"
+  docker exec iter-backup sh -c \
+    'ls -1t /backups/pre-deploy-*.dump | tail -n +6 | xargs -r rm --'
 fi
 
 rollback() {
