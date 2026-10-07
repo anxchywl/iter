@@ -297,6 +297,44 @@ def test_operators_manage_members_and_removal_revokes_access(client, auth):
     assert actions.count("member_removed") == 1
 
 
+def test_approval_applies_the_publication_rules(client, auth, database_url):
+    provider_organizations(client, auth)
+    owner = employer(client, auth)
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+    last_year = datetime.now(UTC).year - 1
+    past = submitted_offer(
+        client,
+        provider,
+        owner["id"],
+        "past-role",
+        season_year=last_year,
+        work_start_date=f"{last_year}-06-01",
+        work_end_date=f"{last_year}-08-30",
+    )
+    current = submitted_offer(client, provider, owner["id"], "current-role")
+    disputed = client.put(
+        f"/api/v1/admin/employers/{owner['id']}",
+        headers=auth,
+        json={
+            "expected_version": owner["version"],
+            "legal_name": owner["legal_name"],
+            "official_website_url": owner["official_website_url"],
+            "identity_status": "disputed",
+            "identity_source_url": "https://example.org/registry",
+        },
+    )
+    assert disputed.status_code == 200, disputed.text
+    for item in (past, current):
+        response = client.post(
+            f"/api/v1/portal/submissions/{item['id']}/approve",
+            headers=operator,
+            json={"expected_version": item["version"], "note": "official source checked"},
+        )
+        assert response.status_code == 409, item["source_identifier"]
+        assert client.get(f"/api/v1/listings/{item['id']}").status_code == 404
+
+
 def test_public_visibility_filters_and_bounded_pages(client, auth):
     owner = employer(client, auth)
     first = published(client, auth, owner["id"])
