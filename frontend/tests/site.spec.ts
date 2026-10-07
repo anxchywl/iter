@@ -213,6 +213,39 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByText("Member removed.")).toBeVisible();
   await expect(page.getByText("Telegram ID 123456")).toHaveCount(0);
+
+  const addEmployer = page.locator("form", {
+    has: page.getByRole("button", { name: "Add employer" }),
+  });
+  await addEmployer.getByLabel("Legal name").fill("Seabrook Resort LLC");
+  await addEmployer
+    .getByLabel("Official website")
+    .fill("https://seabrook.example.com");
+  await page.getByRole("button", { name: "Add employer" }).click();
+  await expect(page.getByText("Employer added.")).toBeVisible();
+  const seabrook = page.locator(".portal-employer", {
+    hasText: "Seabrook Resort LLC",
+  });
+  await expect(seabrook.getByText("Identity not checked")).toBeVisible();
+  await page.getByRole("button", { name: "Edit Seabrook Resort LLC" }).click();
+  const editor = page.locator(".portal-employer form");
+  await expect(editor.getByLabel("Legal name")).toHaveValue(
+    "Seabrook Resort LLC",
+  );
+  await expect(editor.getByLabel("Public record checked")).toHaveCount(0);
+  await editor.getByLabel("Identity").selectOption("disputed");
+  await expect(
+    editor.getByText(
+      "Saving a dispute pauses this employer's published vacancies.",
+    ),
+  ).toBeVisible();
+  await editor.getByLabel("Identity").selectOption("checked");
+  await editor
+    .getByLabel("Public record checked")
+    .fill("https://registry.example.org/seabrook");
+  await editor.getByRole("button", { name: "Save employer" }).click();
+  await expect(page.getByText("Employer updated.")).toBeVisible();
+  await expect(seabrook.getByText("Identity checked")).toBeVisible();
 });
 
 test("detail shows distinct trust facts and contact destination before leaving", async ({

@@ -37,10 +37,16 @@ const listing = {
   last_confirmed_at: "2026-09-27T10:00:00Z",
 };
 
-const employer = {
-  id: "employer-1",
-  legal_name: "Example Employer (fictional)",
-};
+const employers = [
+  {
+    id: "employer-1",
+    legal_name: "Example Employer (fictional)",
+    official_website_url: "https://example.com",
+    identity_status: "not_checked",
+    identity_source_url: null,
+    version: 1,
+  },
+];
 let portalListings = [];
 const organizations = [];
 
@@ -106,7 +112,32 @@ createServer(async (request, response) => {
       status = 204;
     }
   } else if (url.pathname === "/api/v1/portal/employers") {
-    body = { items: [employer] };
+    body = { items: employers };
+  } else if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/employers"
+  ) {
+    const payload = await jsonBody(request);
+    employers.push({
+      id: `employer-${employers.length + 1}`,
+      ...payload,
+      identity_status: "not_checked",
+      identity_source_url: null,
+      version: 1,
+    });
+    status = 201;
+    body = employers.at(-1);
+  } else if (
+    request.method === "PUT" &&
+    /^\/api\/v1\/admin\/employers\/[^/]+$/.test(url.pathname)
+  ) {
+    const payload = await jsonBody(request);
+    const target = employers.find(
+      (item) => item.id === url.pathname.split("/").at(-1),
+    );
+    const { expected_version: _, ...fields } = payload;
+    Object.assign(target, fields, { version: target.version + 1 });
+    body = target;
   } else if (
     url.pathname === "/api/v1/provider/listings" &&
     request.method === "GET"

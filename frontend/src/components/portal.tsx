@@ -19,9 +19,21 @@ type Organization = {
   member_telegram_ids: number[];
 };
 
+type IdentityStatus = "not_checked" | "checked" | "disputed";
+
 type Employer = {
   id: string;
   legal_name: string;
+  official_website_url: string;
+  identity_status: IdentityStatus;
+  identity_source_url: string | null;
+  version: number;
+};
+
+const identityLabels: Record<IdentityStatus, string> = {
+  not_checked: "Identity not checked",
+  checked: "Identity checked",
+  disputed: "Identity disputed",
 };
 
 type PortalListing = {
@@ -259,6 +271,88 @@ function DecisionActions({
         </button>
         <button type="submit" disabled={pending}>
           {current.label}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EmployerEditor({
+  employer,
+  onSave,
+  onCancel,
+}: {
+  employer: Employer;
+  onSave: (employer: Employer, form: FormData) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [status, setStatus] = useState<IdentityStatus>(
+    employer.identity_status,
+  );
+  const [pending, setPending] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    const done = await onSave(employer, new FormData(event.currentTarget));
+    setPending(false);
+    if (done) onCancel();
+  }
+  return (
+    <form className="portal-form portal-form-grid" onSubmit={submit}>
+      <label>
+        Legal name
+        <input
+          name="legal_name"
+          defaultValue={employer.legal_name}
+          required
+          maxLength={160}
+        />
+      </label>
+      <label>
+        Official website
+        <input
+          name="official_website_url"
+          type="url"
+          defaultValue={employer.official_website_url}
+          required
+        />
+      </label>
+      <label>
+        Identity
+        <select
+          name="identity_status"
+          value={status}
+          onChange={(event) =>
+            setStatus(event.currentTarget.value as IdentityStatus)
+          }
+        >
+          <option value="not_checked">Not checked</option>
+          <option value="checked">Checked</option>
+          <option value="disputed">Disputed</option>
+        </select>
+      </label>
+      {status !== "not_checked" && (
+        <label>
+          Public record checked
+          <input
+            name="identity_source_url"
+            type="url"
+            defaultValue={employer.identity_source_url || ""}
+            required
+          />
+        </label>
+      )}
+      <p className="portal-span portal-hint">
+        {status === "disputed"
+          ? "Saving a dispute pauses this employer's published vacancies."
+          : "Checked means the legal name and website match a cited independent public record."}
+      </p>
+      <div className="portal-actions portal-span">
+        <button type="button" className="button-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" disabled={pending}>
+          Save employer
         </button>
       </div>
     </form>
@@ -689,6 +783,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const [reviews, setReviews] = useState<ModerationReview[]>([]);
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [editingEmployer, setEditingEmployer] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -759,6 +854,50 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           body: JSON.stringify({ expected_version: item.version, reason }),
         }),
       "Decision recorded.",
+    );
+  }
+
+  function createEmployer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    void run(
+      () =>
+        portalFetch("admin/employers", {
+          method: "POST",
+          body: JSON.stringify({
+            legal_name: String(data.get("legal_name") || "").trim(),
+            official_website_url: String(
+              data.get("official_website_url") || "",
+            ).trim(),
+          }),
+        }),
+      "Employer added.",
+    ).then((done) => done && form.reset());
+  }
+
+  function saveEmployer(employer: Employer, data: FormData) {
+    const status = String(data.get("identity_status")) as IdentityStatus;
+    return run(
+      () =>
+        portalFetch(`admin/employers/${employer.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            expected_version: employer.version,
+            legal_name: String(data.get("legal_name") || "").trim(),
+            official_website_url: String(
+              data.get("official_website_url") || "",
+            ).trim(),
+            identity_status: status,
+            identity_source_url:
+              status === "not_checked"
+                ? null
+                : String(data.get("identity_source_url") || "").trim(),
+          }),
+        }),
+      status === "disputed"
+        ? "Employer marked disputed. Its published vacancies are paused."
+        : "Employer updated.",
     );
   }
 
@@ -920,6 +1059,74 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                 ]}
                 onDecide={(key, note) => moderate("reports", report, key, note)}
               />
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="portal-panel">
+        <h2>Employers</h2>
+        <p>
+          Providers choose the US employer for each offer from this list. Add
+          the legal name and the employer&apos;s own website, then record the
+          identity check.
+        </p>
+        <form
+          className="portal-form portal-form-grid"
+          onSubmit={createEmployer}
+        >
+          <label>
+            Legal name
+            <input name="legal_name" required maxLength={160} />
+          </label>
+          <label>
+            Official website
+            <input
+              name="official_website_url"
+              type="url"
+              placeholder="https://"
+              required
+            />
+          </label>
+          <div className="portal-actions portal-span">
+            <button type="submit">Add employer</button>
+          </div>
+        </form>
+        <div className="portal-list">
+          {employers.length === 0 && <p>No employers yet.</p>}
+          {employers.map((employer) => (
+            <article key={employer.id} className="portal-item portal-employer">
+              {editingEmployer === employer.id ? (
+                <EmployerEditor
+                  employer={employer}
+                  onSave={saveEmployer}
+                  onCancel={() => setEditingEmployer(null)}
+                />
+              ) : (
+                <>
+                  <div>
+                    <span
+                      className="status-chip"
+                      data-identity={employer.identity_status}
+                    >
+                      {identityLabels[employer.identity_status]}
+                    </span>
+                    <h3>{employer.legal_name}</h3>
+                    <p className="portal-url">
+                      {employer.official_website_url}
+                    </p>
+                  </div>
+                  <div className="portal-actions">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      aria-label={`Edit ${employer.legal_name}`}
+                      onClick={() => setEditingEmployer(employer.id)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </>
+              )}
             </article>
           ))}
         </div>

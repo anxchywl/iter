@@ -1657,6 +1657,36 @@ html:has(dialog[open]) {
   user-select: all;
 }
 
+.portal-employer > form {
+  flex: 1;
+}
+
+.portal-url {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.portal-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.status-chip[data-identity] {
+  text-transform: none;
+}
+
+.status-chip[data-identity="not_checked"] {
+  background: #f1f3f1;
+  color: var(--muted);
+}
+
+.status-chip[data-identity="disputed"] {
+  background: #fff0ed;
+  color: #8a271b;
+}
+
 .portal-decision {
   flex: 1 1 280px;
   max-width: 420px;
