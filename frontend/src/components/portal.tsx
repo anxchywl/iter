@@ -199,6 +199,72 @@ function PortalHeader({ title, label }: { title: string; label: string }) {
   );
 }
 
+type Decision = {
+  key: string;
+  label: string;
+  prompt: string;
+  primary?: boolean;
+};
+
+// telegram webviews do not reliably show window.prompt, so decisions take their note inline
+function DecisionActions({
+  decisions,
+  onDecide,
+}: {
+  decisions: Decision[];
+  onDecide: (key: string, note: string) => Promise<boolean>;
+}) {
+  const [chosen, setChosen] = useState<Decision | null>(null);
+  const [pending, setPending] = useState(false);
+  if (!chosen)
+    return (
+      <div className="portal-actions">
+        {decisions.map((decision) => (
+          <button
+            key={decision.key}
+            type="button"
+            className={decision.primary ? undefined : "button-secondary"}
+            onClick={() => setChosen(decision)}
+          >
+            {decision.label}
+          </button>
+        ))}
+      </div>
+    );
+  const current = chosen;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const note = String(new FormData(event.currentTarget).get("note") || "")
+      .trim()
+      .slice(0, 300);
+    if (!note) return;
+    setPending(true);
+    const done = await onDecide(current.key, note);
+    setPending(false);
+    if (done) setChosen(null);
+  }
+  return (
+    <form className="portal-form portal-decision" onSubmit={submit}>
+      <label>
+        {current.prompt}
+        <textarea name="note" required maxLength={300} autoFocus />
+      </label>
+      <div className="portal-actions">
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={() => setChosen(null)}
+        >
+          Cancel
+        </button>
+        <button type="submit" disabled={pending}>
+          {current.label}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function nullable(form: FormData, name: string) {
   const value = String(form.get(name) || "").trim();
   return value || null;
@@ -669,14 +735,8 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     }
   }
 
-  function decide(listing: PortalListing, decision: "approve" | "changes") {
-    const note = window.prompt(
-      decision === "changes"
-        ? "What must the provider change?"
-        : "What source evidence did you check?",
-    );
-    if (!note) return;
-    void run(
+  function decide(listing: PortalListing, decision: string, note: string) {
+    return run(
       () =>
         portalFetch(`portal/submissions/${listing.id}/${decision}`, {
           method: "POST",
@@ -689,11 +749,10 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   function moderate(
     kind: "reviews" | "reports",
     item: ModerationReview | ModerationReport,
-    decision: "approve" | "reject" | "resolve" | "dismiss",
+    decision: string,
+    reason: string,
   ) {
-    const reason = window.prompt("Record the reason for this decision.");
-    if (!reason) return;
-    void run(
+    return run(
       () =>
         portalFetch(`admin/${kind}/${item.id}/${decision}`, {
           method: "POST",
@@ -789,17 +848,22 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                   Check official source
                 </a>
               </div>
-              <div className="portal-actions">
-                <button
-                  className="button-secondary"
-                  onClick={() => decide(listing, "changes")}
-                >
-                  Request changes
-                </button>
-                <button onClick={() => decide(listing, "approve")}>
-                  Approve and publish
-                </button>
-              </div>
+              <DecisionActions
+                decisions={[
+                  {
+                    key: "changes",
+                    label: "Request changes",
+                    prompt: "What must the provider change?",
+                  },
+                  {
+                    key: "approve",
+                    label: "Approve and publish",
+                    prompt: "What source evidence did you check?",
+                    primary: true,
+                  },
+                ]}
+                onDecide={(key, note) => decide(listing, key, note)}
+              />
             </article>
           ))}
         </div>
@@ -816,17 +880,18 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                 <p>Season {review.season_year}</p>
                 {review.text && <p>{review.text}</p>}
               </div>
-              <div className="portal-actions">
-                <button
-                  className="button-secondary"
-                  onClick={() => moderate("reviews", review, "reject")}
-                >
-                  Reject
-                </button>
-                <button onClick={() => moderate("reviews", review, "approve")}>
-                  Approve
-                </button>
-              </div>
+              <DecisionActions
+                decisions={[
+                  { key: "reject", label: "Reject", prompt: reasonPrompt },
+                  {
+                    key: "approve",
+                    label: "Approve",
+                    prompt: reasonPrompt,
+                    primary: true,
+                  },
+                ]}
+                onDecide={(key, note) => moderate("reviews", review, key, note)}
+              />
             </article>
           ))}
         </div>
@@ -843,17 +908,18 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                 <p>Item {report.item_id}</p>
                 {report.explanation && <p>{report.explanation}</p>}
               </div>
-              <div className="portal-actions">
-                <button
-                  className="button-secondary"
-                  onClick={() => moderate("reports", report, "dismiss")}
-                >
-                  Dismiss
-                </button>
-                <button onClick={() => moderate("reports", report, "resolve")}>
-                  Resolve
-                </button>
-              </div>
+              <DecisionActions
+                decisions={[
+                  { key: "dismiss", label: "Dismiss", prompt: reasonPrompt },
+                  {
+                    key: "resolve",
+                    label: "Resolve",
+                    prompt: reasonPrompt,
+                    primary: true,
+                  },
+                ]}
+                onDecide={(key, note) => moderate("reports", report, key, note)}
+              />
             </article>
           ))}
         </div>
@@ -931,3 +997,5 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     </div>
   );
 }
+
+const reasonPrompt = "Record the reason for this decision.";
