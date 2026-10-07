@@ -22,6 +22,8 @@ export default defineConfig({
         DIRECTORY_API_URL: "http://127.0.0.1:18017",
         DIRECTORY_DEMO_MODE: "true",
         FEEDBACK_ENABLED: "true",
+        TELEGRAM_BOT_USERNAME: "iter_app_bot",
+        TELEGRAM_APP_SHORT_NAME: "vacancies",
       },
       reuseExistingServer: false,
       timeout: 30000,

@@ -162,6 +162,31 @@ test("management asks for Telegram and shows unknown members their id", async ({
   ).toBeVisible();
 });
 
+test("links that open Telegram hide inside the Mini App", async ({ page }) => {
+  await page.goto("/");
+  const footerLink = page.getByRole("link", { name: "Open in Telegram" });
+  await expect(footerLink).toBeVisible();
+  await expect(footerLink).toHaveAttribute(
+    "href",
+    "https://t.me/iter_app_bot/vacancies?startapp",
+  );
+  await page.goto(`/jobs/${id}`);
+  await expect(page.locator(".telegram-link")).toBeVisible();
+
+  await page.goto(telegramLaunch("/", 5));
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Vacancies", exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(footerLink).toBeHidden();
+  await page.getByRole("link", { name: /Front desk assistant/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Front desk assistant" }),
+  ).toBeVisible();
+  await expect(page.locator(".telegram-link")).toBeHidden();
+  await expect(footerLink).toBeHidden();
+});
+
 test("provider submits an offer and an operator publishes it", async ({
   page,
 }) => {

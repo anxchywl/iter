@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { TelegramBridge } from "@/components/telegram-bridge";
 import { miniAppLink } from "@/lib/links";
 import { requestLocale } from "@/lib/request-locale";
+import { telegramMarkScript } from "@/lib/telegram";
 import "@/app/globals.css";
 
 export default async function RootLayout({
@@ -11,8 +12,13 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
   return (
-    <html lang={await requestLocale()} data-scroll-behavior="smooth">
+    <html
+      lang={await requestLocale()}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <body>
+        <script dangerouslySetInnerHTML={{ __html: telegramMarkScript }} />
         <TelegramBridge />
         <AppShell
           demoMode={process.env.DIRECTORY_DEMO_MODE === "true"}

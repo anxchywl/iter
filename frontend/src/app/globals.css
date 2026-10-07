@@ -909,6 +909,10 @@ p {
   margin-top: 0.5rem;
   font-size: 0.7rem;
 }
+[data-telegram] .telegram-launch,
+[data-telegram] .telegram-link {
+  display: none;
+}
 .detail-wrap {
   padding-top: 1rem;
 }

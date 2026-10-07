@@ -4,6 +4,7 @@ import {
   openOutside,
   startTelegramApp,
   telegramInitData,
+  telegramMarkScript,
   type TelegramWindow,
 } from "../src/lib/telegram";
 
@@ -114,6 +115,44 @@ describe("telegram bridge", () => {
         JSON.stringify({ url: "https://example.com/apply?a=1" }),
       ],
     ]);
+  });
+
+  it("marks the page before paint only inside telegram", () => {
+    function marked(
+      globals: { proxy?: boolean; hash?: string; stored?: string },
+      broken = false,
+    ) {
+      const dataset: Record<string, string> = {};
+      const storage = {
+        getItem: (key: string) => {
+          if (broken) throw new Error("storage blocked");
+          return key === "iter.telegram.launch"
+            ? (globals.stored ?? null)
+            : null;
+        },
+      };
+      new Function(
+        "window",
+        "location",
+        "sessionStorage",
+        "document",
+        telegramMarkScript,
+      )(
+        globals.proxy ? { TelegramWebviewProxy: {} } : {},
+        { hash: globals.hash ?? "" },
+        storage,
+        { documentElement: { dataset } },
+      );
+      return "telegram" in dataset;
+    }
+    expect(marked({})).toBe(false);
+    expect(marked({ hash: "#section" })).toBe(false);
+    expect(marked({ hash: "#tgWebAppData=x" })).toBe(false);
+    expect(marked({ proxy: true })).toBe(true);
+    expect(marked({ hash: "#tgWebAppData=x&tgWebAppPlatform=ios" })).toBe(true);
+    expect(marked({ stored: "tgWebAppPlatform=weba" })).toBe(true);
+    expect(marked({}, true)).toBe(false);
+    expect(marked({ proxy: true }, true)).toBe(true);
   });
 
   it("routes only known management start parameters", () => {

@@ -12,6 +12,9 @@ type ParentFrame = { postMessage: (message: string, origin: string) => void };
 const launchKey = "iter.telegram.launch";
 const paper = "#ffffff";
 
+// runs before first paint so links meant for opening telegram never flash inside it
+export const telegramMarkScript = `try{if(window.TelegramWebviewProxy||/(?:^|[#&])tgWebAppPlatform=/.test(location.hash)||sessionStorage.getItem("${launchKey}"))document.documentElement.dataset.telegram=""}catch(e){if(window.TelegramWebviewProxy)document.documentElement.dataset.telegram=""}`;
+
 const startEvents: [string, object][] = [
   ["web_app_ready", {}],
   ["web_app_expand", {}],
