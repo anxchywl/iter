@@ -193,7 +193,10 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(
     page.getByRole("heading", { name: "Guest services assistant" }),
   ).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept("Official source checked"));
+  await page.getByRole("button", { name: "Approve and publish" }).click();
+  await page
+    .getByLabel("What source evidence did you check?")
+    .fill("Official source checked");
   await page.getByRole("button", { name: "Approve and publish" }).click();
   await expect(page.getByText("Offer published.")).toBeVisible();
   await expect(page.getByText("No pending offers.")).toBeVisible();
