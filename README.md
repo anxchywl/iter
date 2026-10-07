@@ -17,4 +17,4 @@ Run `./scripts/local-seed.sh` to add fictional listings. Open [http://127.0.0.1:
 
 Run `./scripts/verify.sh` for migrations, tests, browser smoke checks, image builds, and security scans. It uses a disposable Compose project.
 
-See [product behavior](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), and [infrastructure and release gates](docs/INFRASTRUCTURE.md). Public feedback defaults to off outside local Compose until its data and rate-limit plan is approved. Production deployment is not configured.
+See [product behavior](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), and [infrastructure and release gates](docs/INFRASTRUCTURE.md). Public feedback defaults to off outside local Compose until its data and rate-limit plan is approved. Offer management runs inside the Telegram Mini App; locally, `./scripts/local-portal-link.py operator` prints a signed test link. Production files for the shared host are in `compose.production.yaml` and `deploy/`; nothing is deployed yet.
