@@ -12,7 +12,7 @@ import {
   searchQuery,
   type SearchInput,
 } from "@/lib/directory";
-import { miniAppLink, startListing } from "@/lib/links";
+import { miniAppLink, startListing, startPortal } from "@/lib/links";
 import { ReportForm, ReviewForm } from "@/components/feedback";
 import { ChevronIcon, ExternalIcon } from "@/components/icons";
 import { LinkPending } from "@/components/link-pending";
@@ -35,6 +35,8 @@ export async function DirectoryPage({
 }) {
   const start = startListing(searchParams.tgWebAppStartParam);
   if (start) redirect(localePath(locale, `/jobs/${start}`));
+  const portal = startPortal(searchParams.tgWebAppStartParam);
+  if (portal) redirect(portal);
   const t = getCopy(locale);
   const filters = parseFilters(searchParams);
   const currentParams = searchQuery(filters);

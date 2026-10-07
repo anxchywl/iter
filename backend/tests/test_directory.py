@@ -1,8 +1,12 @@
+import hashlib
+import hmac
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier
+from urllib.parse import urlencode
 
 import pytest
 from alembic.config import Config
@@ -11,6 +15,10 @@ from sqlalchemy import create_engine, text
 
 from alembic import command
 from app.main import create_app
+from tests.conftest import OPERATOR_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
+
+PROVIDER_TELEGRAM_ID = 7000002
+OTHER_PROVIDER_TELEGRAM_ID = 7000003
 
 
 def employer(client, auth):
@@ -87,50 +95,88 @@ def published(client, auth, employer_id, identifier="role-1", **changes):
     return response.json()
 
 
-def portal_session(client, secret):
-    response = client.post("/api/v1/portal/sessions", headers={"Authorization": f"Bearer {secret}"})
-    assert response.status_code == 201, response.text
-    return {
-        "X-Portal-Session": response.json()["token"],
-        "Content-Type": "application/json",
+def init_data(user_id, auth_date=None, token=TELEGRAM_BOT_TOKEN, **extra):
+    fields = {
+        "auth_date": str(int((auth_date or datetime.now(UTC)).timestamp())),
+        "query_id": "AAH-test",
+        "user": json.dumps({"id": user_id, "first_name": "Test"}),
+        **extra,
     }
+    check = "\n".join(f"{key}={value}" for key, value in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    fields["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return urlencode(fields)
 
 
-def test_provider_portal_scopes_submissions_and_sessions(client, auth):
-    for key, name in (("provider-org", "Provider Org"), ("other-provider-org", "Other Org")):
+def telegram(user_id, **options):
+    return {"Authorization": f"tma {init_data(user_id, **options)}"}
+
+
+def provider_organizations(client, auth):
+    for key, name, member in (
+        ("provider-org", "Provider Org", PROVIDER_TELEGRAM_ID),
+        ("other-provider-org", "Other Org", OTHER_PROVIDER_TELEGRAM_ID),
+    ):
         response = client.post(
-            "/api/v1/admin/organizations",
-            headers=auth,
-            json={"key": key, "name": name},
+            "/api/v1/admin/organizations", headers=auth, json={"key": key, "name": name}
         )
         assert response.status_code == 201, response.text
-    owner = employer(client, auth)
-    provider = portal_session(client, "test-provider-token-with-at-least-32-characters")
-    other = portal_session(client, "other-provider-token-with-at-least-32-characters")
-    operator = portal_session(client, "test-admin-token-with-at-least-32-characters")
+        response = client.post(
+            f"/api/v1/admin/organizations/{key}/members",
+            headers=auth,
+            json={"telegram_user_id": member},
+        )
+        assert response.status_code == 201, response.text
 
+
+def submitted_offer(client, provider, employer_id, identifier="provider-role", **changes):
     created = client.post(
         "/api/v1/provider/listings",
         headers=provider,
-        json=listing_content(owner["id"], "provider-role"),
+        json=listing_content(employer_id, identifier, **changes),
     )
     assert created.status_code == 201, created.text
     item = created.json()
-    assert item["submission_status"] == "draft"
-    assert client.get(f"/api/v1/provider/listings/{item['id']}", headers=other).status_code == 404
-    assert client.get("/api/v1/portal/submissions", headers=provider).status_code == 403
-    assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
-    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
-    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
-
     submitted = client.post(
         f"/api/v1/provider/listings/{item['id']}/submit",
         headers=provider,
         json={"expected_version": item["version"]},
     )
     assert submitted.status_code == 200, submitted.text
-    item = submitted.json()
+    return submitted.json()
+
+
+def test_provider_portal_scopes_submissions_to_telegram_members(client, auth):
+    provider_organizations(client, auth)
+    owner = employer(client, auth)
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    other = telegram(OTHER_PROVIDER_TELEGRAM_ID)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+
+    identity = client.get("/api/v1/portal/me", headers=provider).json()
+    assert identity == {
+        "telegram_user_id": PROVIDER_TELEGRAM_ID,
+        "role": "provider",
+        "organization_name": "Provider Org",
+    }
+    assert client.get("/api/v1/portal/me", headers=operator).json()["role"] == "operator"
+
+    created = client.post(
+        "/api/v1/provider/listings",
+        headers=provider,
+        json=listing_content(owner["id"], "provider-role", status="published"),
+    )
+    assert created.status_code == 422
+    item = submitted_offer(client, provider, owner["id"])
     assert item["submission_status"] == "pending"
+    assert client.get(f"/api/v1/provider/listings/{item['id']}", headers=other).status_code == 404
+    assert client.get("/api/v1/provider/listings", headers=other).json()["items"] == []
+    assert client.get("/api/v1/portal/submissions", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
+    assert client.get("/api/v1/admin/organizations", headers=provider).status_code == 403
+    assert client.get("/api/v1/provider/listings", headers=operator).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
+    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
     assert (
         client.put(
             f"/api/v1/provider/listings/{item['id']}",
@@ -140,7 +186,6 @@ def test_provider_portal_scopes_submissions_and_sessions(client, auth):
         == 409
     )
     queue = client.get("/api/v1/portal/submissions", headers=operator)
-    assert queue.status_code == 200
     assert [row["id"] for row in queue.json()["items"]] == [item["id"]]
 
     approved = client.post(
@@ -151,9 +196,105 @@ def test_provider_portal_scopes_submissions_and_sessions(client, auth):
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "published"
     assert client.get(f"/api/v1/listings/{item['id']}").status_code == 200
+    events = client.get("/api/v1/admin/audit", headers=auth).json()["items"]
+    assert {"actor": f"telegram:{OPERATOR_TELEGRAM_ID}", "action": "listing_approved"} in [
+        {"actor": event["actor"], "action": event["action"]} for event in events
+    ]
 
-    assert client.delete("/api/v1/portal/session", headers=provider).status_code == 204
-    assert client.get("/api/v1/portal/session", headers=provider).status_code == 401
+
+def test_portal_rejects_unsigned_stale_or_foreign_init_data(client, auth):
+    provider_organizations(client, auth)
+    now = datetime.now(UTC)
+    valid = init_data(PROVIDER_TELEGRAM_ID)
+    tampered = valid.replace("7000002", "7000003")
+    rejected = [
+        {},
+        {"Authorization": f"Bearer {valid}"},
+        {"Authorization": f"tma {tampered}"},
+        {"Authorization": "tma " + valid.replace("hash=", "hash=0")},
+        {"Authorization": f"tma {valid}&hash=0"},
+        {"Authorization": "tma auth_date=1&user=%7B%22id%22%3A1%7D"},
+        telegram(PROVIDER_TELEGRAM_ID, token="654321:a-different-bot-token-for-signing"),
+        telegram(PROVIDER_TELEGRAM_ID, auth_date=now - timedelta(hours=9)),
+        telegram(PROVIDER_TELEGRAM_ID, auth_date=now + timedelta(minutes=5)),
+        {"Authorization": f"tma {'a=' * 3000}"},
+    ]
+    for headers in rejected:
+        assert client.get("/api/v1/portal/me", headers=headers).status_code == 401, headers
+        assert client.get("/api/v1/provider/listings", headers=headers).status_code == 401
+    assert (
+        client.get("/api/v1/admin/reviews", headers={"Authorization": f"tma {tampered}"})
+    ).status_code == 401
+    assert (
+        client.get("/api/v1/portal/me", headers={"Authorization": f"tma {valid}"}).json()["role"]
+        == "provider"
+    )
+
+
+def test_unknown_telegram_users_see_only_their_id(client, auth):
+    stranger = telegram(7000099)
+    assert client.get("/api/v1/portal/me", headers=stranger).json() == {
+        "telegram_user_id": 7000099,
+        "role": None,
+        "organization_name": None,
+    }
+    for path in ("/api/v1/portal/employers", "/api/v1/provider/listings", "/api/v1/admin/audit"):
+        assert client.get(path, headers=stranger).status_code == 403, path
+    response = client.post(
+        "/api/v1/admin/organizations",
+        headers=stranger,
+        json={"key": "stranger-org", "name": "Stranger"},
+    )
+    assert response.status_code == 403
+
+
+def test_operators_manage_members_and_removal_revokes_access(client, auth):
+    provider_organizations(client, auth)
+    operator = telegram(OPERATOR_TELEGRAM_ID)
+    members = "/api/v1/admin/organizations/provider-org/members"
+    for member, status in (
+        (PROVIDER_TELEGRAM_ID, 409),
+        (OTHER_PROVIDER_TELEGRAM_ID, 409),
+        (OPERATOR_TELEGRAM_ID, 409),
+        (7000004, 201),
+    ):
+        response = client.post(members, headers=operator, json={"telegram_user_id": member})
+        assert response.status_code == status, (member, response.text)
+    for invalid in (0, -1, "7000005", 2**53):
+        response = client.post(members, headers=operator, json={"telegram_user_id": invalid})
+        assert response.status_code == 422, invalid
+    assert (
+        client.post(
+            "/api/v1/admin/organizations/missing-org/members",
+            headers=operator,
+            json={"telegram_user_id": 7000006},
+        ).status_code
+        == 404
+    )
+    listed = client.get("/api/v1/admin/organizations", headers=operator).json()["items"]
+    assert {row["key"]: row["member_telegram_ids"] for row in listed} == {
+        "provider-org": [PROVIDER_TELEGRAM_ID, 7000004],
+        "other-provider-org": [OTHER_PROVIDER_TELEGRAM_ID],
+    }
+
+    provider = telegram(PROVIDER_TELEGRAM_ID)
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 200
+    assert (
+        client.delete(
+            f"/api/v1/admin/organizations/other-provider-org/members/{PROVIDER_TELEGRAM_ID}",
+            headers=operator,
+        ).status_code
+        == 404
+    )
+    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 204
+    assert client.get("/api/v1/portal/me", headers=provider).json()["role"] is None
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 403
+    assert client.delete(f"{members}/{PROVIDER_TELEGRAM_ID}", headers=operator).status_code == 404
+    actions = [
+        event["action"] for event in client.get("/api/v1/admin/audit", headers=auth).json()["items"]
+    ]
+    assert actions.count("member_added") == 3
+    assert actions.count("member_removed") == 1
 
 
 def test_public_visibility_filters_and_bounded_pages(client, auth):

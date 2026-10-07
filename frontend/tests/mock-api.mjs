@@ -42,6 +42,7 @@ const employer = {
   legal_name: "Example Employer (fictional)",
 };
 let portalListings = [];
+const organizations = [];
 
 async function jsonBody(request) {
   const chunks = [];
@@ -53,39 +54,57 @@ createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1:18017");
   let status = 200;
   let body;
-  if (request.method === "POST" && url.pathname === "/api/v1/portal/sessions") {
-    const credential = request.headers.authorization?.replace(/^Bearer /, "");
-    const role =
-      credential === "operator-test-000000000000000000000000"
-        ? "operator"
-        : credential === "provider-test-000000000000000000000000"
-          ? "provider"
-          : null;
-    status = role ? 201 : 401;
-    body = role
+  if (url.pathname === "/api/v1/portal/me") {
+    // the real backend verifies the signature; the mock only reads the user id
+    const raw = request.headers.authorization?.replace(/^tma /, "") ?? "";
+    const user = JSON.parse(new URLSearchParams(raw).get("user") || "{}");
+    const role = { 1: "operator", 2: "provider" }[user.id] ?? null;
+    status = user.id ? 200 : 401;
+    body = user.id
       ? {
-          token: `${role}-session`,
-          actor: `test-${role}`,
+          telegram_user_id: user.id,
           role,
-          organization_id: role === "provider" ? "org-1" : null,
+          organization_name: role === "provider" ? "Example Provider" : null,
         }
       : { detail: "Unauthorized" };
-  } else if (url.pathname === "/api/v1/portal/session") {
-    const token = request.headers["x-portal-session"];
-    const role =
-      token === "provider-session"
-        ? "provider"
-        : token === "operator-session"
-          ? "operator"
-          : null;
-    status = role ? (request.method === "DELETE" ? 204 : 200) : 401;
-    body = role
-      ? {
-          actor: `test-${role}`,
-          role,
-          organization_id: role === "provider" ? "org-1" : null,
-        }
-      : { detail: "Unauthorized" };
+  } else if (
+    url.pathname === "/api/v1/admin/organizations" &&
+    request.method === "GET"
+  ) {
+    body = { items: organizations };
+  } else if (
+    url.pathname === "/api/v1/admin/organizations" &&
+    request.method === "POST"
+  ) {
+    const payload = await jsonBody(request);
+    organizations.push({
+      id: `org-${organizations.length + 1}`,
+      ...payload,
+      status: "active",
+      member_telegram_ids: [],
+    });
+    status = 201;
+    body = organizations.at(-1);
+  } else if (
+    /^\/api\/v1\/admin\/organizations\/[^/]+\/members(\/\d+)?$/.test(
+      url.pathname,
+    )
+  ) {
+    const [, , , , , key, , member] = url.pathname.split("/");
+    const organization = organizations.find((item) => item.key === key);
+    if (request.method === "POST") {
+      const payload = await jsonBody(request);
+      organization.member_telegram_ids.push(payload.telegram_user_id);
+      status = 201;
+      body = {
+        organization_key: key,
+        telegram_user_id: payload.telegram_user_id,
+      };
+    } else {
+      organization.member_telegram_ids =
+        organization.member_telegram_ids.filter((id) => id !== Number(member));
+      status = 204;
+    }
   } else if (url.pathname === "/api/v1/portal/employers") {
     body = { items: [employer] };
   } else if (
