@@ -1,0 +1,75 @@
+name: Deploy
+
+# manual only: a run ships the revision it checks out, after CI passed on it
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - name: Check the deployment is configured
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          ITER_DOMAIN: ${{ vars.ITER_DOMAIN }}
+        run: |
+          missing=
+          for name in SSH_HOST SSH_USER DEPLOY_PATH SSH_PRIVATE_KEY SSH_KNOWN_HOSTS ITER_DOMAIN; do
+            eval "value=\${$name}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          [ -z "$missing" ] || { echo "deployment is not configured; missing:$missing" >&2; exit 1; }
+
+      - name: Require a green CI run for this revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ github.sha }}
+        run: |
+          conclusion=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$REVISION" \
+            --jq '[.workflow_runs[] | select(.name == "CI")] | first | .conclusion // "none"')
+          echo "CI for $REVISION: $conclusion"
+          [ "$conclusion" = "success" ] || { echo "refusing to deploy a revision CI has not passed" >&2; exit 1; }
+
+      - name: Authorise the ssh session
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Deploy the tested revision
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          REVISION: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             cd '$DEPLOY_PATH'
+             git fetch --prune origin
+             git checkout --detach '$REVISION'
+             DEPLOY_REF='$REVISION' ./deploy/deploy.sh"
+
+      - name: Confirm the site answers from outside the host
+        env:
+          ITER_DOMAIN: ${{ vars.ITER_DOMAIN }}
+        run: curl --fail --silent --show-error --max-time 10 "https://$ITER_DOMAIN/" >/dev/null
