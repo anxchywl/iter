@@ -63,6 +63,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
       OPERATOR_TELEGRAM_IDS: ${OPERATOR_TELEGRAM_IDS:?OPERATOR_TELEGRAM_IDS is required}
       FEEDBACK_ENABLED: ${FEEDBACK_ENABLED:-false}
+      TRUST_PROXY_CLIENT_IP: "true"
     command:
       - /opt/venv/bin/uvicorn
       - app.main:create_app

@@ -16,5 +16,7 @@ iter.anxchywl.dev {
         max_size 64KB
     }
 
-    reverse_proxy iter-web:3000
+    reverse_proxy iter-web:3000 {
+        header_up X-Iter-Client-IP {remote_host}
+    }
 }

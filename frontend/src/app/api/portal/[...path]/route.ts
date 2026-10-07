@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { clientAddressHeader } from "@/lib/client-address";
+
 const allowedRoots = new Set(["admin", "provider", "portal"]);
 const cookieName = "iter_portal_session";
 
@@ -39,6 +41,7 @@ async function forward(
   const headers: Record<string, string> = authorization.startsWith("tma ")
     ? { Authorization: authorization }
     : { "X-Portal-Session": session! };
+  Object.assign(headers, clientAddressHeader(request));
   let body: string | undefined;
   if (request.method === "POST" || request.method === "PUT") {
     if (

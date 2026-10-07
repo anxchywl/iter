@@ -188,6 +188,35 @@ def test_provider_portal_scopes_submissions_to_company_sessions(client, auth):
     assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
     assert client.get("/api/v1/admin/organizations", headers=provider).status_code == 403
     assert client.get("/api/v1/provider/listings", headers=operator).status_code == 403
+
+
+def test_portal_login_limit_does_not_block_operator_writes(client, auth):
+    for _ in range(10):
+        assert (
+            client.post(
+                "/api/v1/portal/sessions",
+                headers={"Authorization": "Bearer invalid-company-access-key"},
+            ).status_code
+            == 401
+        )
+    assert (
+        client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": "Bearer invalid-company-access-key"},
+        ).status_code
+        == 429
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/employers",
+            headers=auth,
+            json={
+                "legal_name": "Available Operator LLC",
+                "official_website_url": "https://operator.example.com",
+            },
+        ).status_code
+        == 201
+    )
     assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
     assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
     assert (

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { clientAddressHeader } from "@/lib/client-address";
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ kind: string }> },
@@ -42,7 +44,10 @@ export async function POST(
   try {
     const response = await fetch(new URL(`/api/v1/${kind}`, base), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...clientAddressHeader(request),
+      },
       body,
       cache: "no-store",
       signal: AbortSignal.timeout(6000),

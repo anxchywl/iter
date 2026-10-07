@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -164,9 +165,31 @@ class WriteGuard:
         path = scope.get("path", "")
         client = scope.get("client")
         address = client[0] if client else "unknown"
-        group = "reviews" if path == "/api/v1/reviews" else "admin"
-        limit, window = (100, 60) if group == "reviews" else (60, 60)
-        if not self.limiter.allow(address, group, limit, window):
+        if os.environ.get("TRUST_PROXY_CLIENT_IP") == "true":
+            forwarded = headers.get(b"x-iter-client-ip", b"").decode(errors="ignore")
+            try:
+                address = str(ipaddress.ip_address(forwarded))
+            except ValueError:
+                address = "unknown"
+        if path == "/api/v1/portal/sessions":
+            group, limit = "portal_login", 10
+        elif path == "/api/v1/reviews":
+            group, limit = "reviews", 100
+        elif path == "/api/v1/reports":
+            group, limit = "reports", 30
+        elif path.startswith("/api/v1/admin/"):
+            group, limit = "admin", 60
+        else:
+            group, limit = "portal", 60
+        if not self.limiter.allow(address, f"client:{group}", limit, 60):
+            await JSONResponse({"detail": "Too many requests"}, status_code=429)(
+                scope, receive, send
+            )
+            return
+        credential = headers.get(b"x-portal-session") or headers.get(b"authorization")
+        if credential and not self.limiter.allow(
+            credential.decode(errors="ignore"), f"credential:{group}", limit, 60
+        ):
             await JSONResponse({"detail": "Too many requests"}, status_code=429)(
                 scope, receive, send
             )

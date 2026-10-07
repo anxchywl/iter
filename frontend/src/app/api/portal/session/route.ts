@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { clientAddressHeader } from "@/lib/client-address";
+
 const cookieName = "iter_portal_session";
 
 function hasTrustedOrigin(request: NextRequest) {
@@ -37,7 +39,10 @@ export async function POST(request: NextRequest) {
   try {
     const upstream = await fetch(backendUrl("/api/v1/portal/sessions"), {
       method: "POST",
-      headers: { Authorization: `Bearer ${body.access_key}` },
+      headers: {
+        Authorization: `Bearer ${body.access_key}`,
+        ...clientAddressHeader(request),
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(6000),
     });
