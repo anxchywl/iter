@@ -75,6 +75,17 @@ class OrganizationEdit(OrganizationCreate):
     expected_version: int = Field(ge=1)
 
 
+class OrganizationAccessAction(InputModel):
+    expected_version: int = Field(ge=1)
+
+
+class OrganizationStatusAction(OrganizationAccessAction):
+    status: str = Field(pattern="^(active|suspended)$")
+    reason: str = Field(min_length=1, max_length=300)
+
+    _reason = field_validator("reason")(plain_text)
+
+
 class EmployerEdit(EmployerCreate):
     expected_version: int = Field(ge=1)
     identity_status: str = Field(default="not_checked", pattern="^(not_checked|checked|disputed)$")

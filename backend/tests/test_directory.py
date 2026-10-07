@@ -302,7 +302,7 @@ def test_unknown_telegram_users_see_only_their_id(client, auth):
     assert response.status_code == 403
 
 
-def test_operator_manages_company_profile_and_rotates_access(client, auth):
+def test_operator_manages_company_profile_and_rotates_access(client, auth, database_url):
     [(organization, provider), _] = provider_organizations(client, auth)
     operator = telegram(OPERATOR_TELEGRAM_ID)
     listed = client.get("/api/v1/admin/organizations", headers=operator).json()["items"]
@@ -323,10 +323,77 @@ def test_operator_manages_company_profile_and_rotates_access(client, auth):
     )
     assert edited.status_code == 200, edited.text
     assert client.get("/api/v1/provider/listings", headers=provider).status_code == 200
+
+    suspended = client.post(
+        f"/api/v1/admin/organizations/{organization['id']}/status",
+        headers=operator,
+        json={
+            "expected_version": edited.json()["version"],
+            "status": "suspended",
+            "reason": "company access review",
+        },
+    )
+    assert suspended.status_code == 200, suspended.text
+    assert client.get("/api/v1/provider/listings", headers=provider).status_code == 401
+    assert (
+        client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": f"Bearer {organization['access_key']}"},
+        ).status_code
+        == 401
+    )
+    restored = client.post(
+        f"/api/v1/admin/organizations/{organization['id']}/status",
+        headers=operator,
+        json={
+            "expected_version": suspended.json()["version"],
+            "status": "active",
+            "reason": "company access review completed",
+        },
+    )
+    assert restored.status_code == 200, restored.text
+    assert (
+        client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": f"Bearer {organization['access_key']}"},
+        ).status_code
+        == 201
+    )
+
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE portal_sessions SET expires_at = now() - interval '1 hour'")
+        )
+    assert (
+        client.post(
+            "/api/v1/portal/sessions",
+            headers={"Authorization": f"Bearer {organization['access_key']}"},
+        ).status_code
+        == 201
+    )
+    with engine.begin() as connection:
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM portal_sessions WHERE organization_id = :organization_id"
+                ),
+                {"organization_id": organization["id"]},
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM portal_sessions WHERE expires_at <= now()")
+            ).scalar_one()
+            == 0
+        )
+    engine.dispose()
+
     rotated = client.post(
         f"/api/v1/admin/organizations/{organization['id']}/access-key",
         headers=operator,
-        json={},
+        json={"expected_version": restored.json()["version"]},
     )
     assert rotated.status_code == 200, rotated.text
     assert rotated.json()["access_key"] != organization["access_key"]
@@ -347,6 +414,8 @@ def test_operator_manages_company_profile_and_rotates_access(client, auth):
         event["action"] for event in client.get("/api/v1/admin/audit", headers=auth).json()["items"]
     ]
     assert "organization_updated" in actions
+    assert "organization_suspended" in actions
+    assert "organization_active" in actions
     assert "organization_access_key_rotated" in actions
 
 

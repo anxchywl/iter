@@ -1065,7 +1065,10 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     try {
       const result = await portalFetch(
         `admin/organizations/${organization.id}/access-key`,
-        { method: "POST", body: "{}" },
+        {
+          method: "POST",
+          body: JSON.stringify({ expected_version: organization.version }),
+        },
       );
       setIssuedKey({
         organizationName: organization.name,
@@ -1081,6 +1084,27 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     } catch (reason) {
       setError(reasonText(reason));
     }
+  }
+
+  function changeOrganizationStatus(organization: Organization) {
+    const status = organization.status === "active" ? "suspended" : "active";
+    return run(
+      () =>
+        portalFetch(`admin/organizations/${organization.id}/status`, {
+          method: "POST",
+          body: JSON.stringify({
+            expected_version: organization.version,
+            status,
+            reason:
+              status === "suspended"
+                ? "operator suspended company access"
+                : "operator restored company access",
+          }),
+        }),
+      status === "suspended"
+        ? "Company suspended. Existing sessions were signed out."
+        : "Company access restored.",
+    );
   }
 
   if (access.state !== "ready")
@@ -1447,6 +1471,21 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                           : "Create access key"}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className={
+                        organization.status === "active"
+                          ? "button-danger"
+                          : "button-secondary"
+                      }
+                      onClick={() =>
+                        void changeOrganizationStatus(organization)
+                      }
+                    >
+                      {organization.status === "active"
+                        ? "Suspend access"
+                        : "Restore access"}
+                    </button>
                   </div>
                 </>
               )}

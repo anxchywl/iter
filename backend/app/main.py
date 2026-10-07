@@ -34,8 +34,10 @@ from app.schemas import (
     EmployerEdit,
     ListingContent,
     ListingEdit,
+    OrganizationAccessAction,
     OrganizationCreate,
     OrganizationEdit,
+    OrganizationStatusAction,
     ReportSubmit,
     ReviewRedaction,
     ReviewSubmit,
@@ -565,6 +567,7 @@ def create_app(
             raise HTTPException(status_code=401, detail="Unauthorized")
         raw_token = token_urlsafe(32)
         moment = now_utc()
+        session.execute(sa_delete(PortalSession).where(PortalSession.expires_at <= moment))
         session.add(
             PortalSession(
                 token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
@@ -897,12 +900,16 @@ def create_app(
 
     @app.post("/api/v1/admin/organizations/{organization_id}/access-key")
     def rotate_organization_access_key(
-        organization_id: str, session: SessionDep, actor: AdminDep
+        organization_id: str,
+        payload: OrganizationAccessAction,
+        session: SessionDep,
+        actor: AdminDep,
     ) -> dict:
         access_key = f"iter_company_{token_urlsafe(32)}"
         with session.begin():
             organization = organization_by_id(session, organization_id)
             session.refresh(organization, with_for_update=True)
+            checked_version(organization.version, payload.expected_version)
             organization.access_key_hash = hashlib.sha256(access_key.encode()).hexdigest()
             organization.access_key_hint = access_key[-8:]
             organization.access_key_created_at = now_utc()
@@ -919,6 +926,36 @@ def create_app(
                 {},
             )
         return jsonable_encoder(organization_record(organization) | {"access_key": access_key})
+
+    @app.post("/api/v1/admin/organizations/{organization_id}/status")
+    def change_organization_status(
+        organization_id: str,
+        payload: OrganizationStatusAction,
+        session: SessionDep,
+        actor: AdminDep,
+    ) -> dict:
+        session.rollback()
+        with session.begin():
+            organization = organization_by_id(session, organization_id)
+            session.refresh(organization, with_for_update=True)
+            checked_version(organization.version, payload.expected_version)
+            if organization.status == payload.status:
+                raise conflict()
+            previous = organization.status
+            organization.status = payload.status
+            organization.version += 1
+            session.execute(
+                sa_delete(PortalSession).where(PortalSession.organization_id == organization.id)
+            )
+            audit(
+                session,
+                actor,
+                f"organization_{payload.status}",
+                "organization",
+                organization.id,
+                {"from": previous, "to": payload.status, "reason": payload.reason},
+            )
+        return jsonable_encoder(organization_record(organization))
 
     @app.post("/api/v1/admin/employers", status_code=201)
     def create_employer(payload: EmployerCreate, session: SessionDep, actor: AdminDep) -> dict:
