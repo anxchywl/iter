@@ -81,10 +81,37 @@ p {
   font-weight: 700;
 }
 .app-shell {
+  display: flex;
+  flex-direction: column;
   width: min(100%, 620px);
   min-height: 100dvh;
   margin: auto;
   background: #fff;
+}
+/* main takes the spare height, so the footer stays at the bottom of short pages */
+#main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.content-wrap:has(.empty-feed) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.results-section:has(.empty-feed) {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+.state-panel.empty-feed {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.state-panel.empty-feed h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
 }
 .site-header {
   position: relative;

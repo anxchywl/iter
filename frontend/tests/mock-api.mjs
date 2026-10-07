@@ -47,6 +47,8 @@ const employers = [
     version: 1,
   },
 ];
+// tests switch the public feed to empty through this flag
+let emptyFeed = false;
 let portalListings = [];
 const organizations = [];
 
@@ -138,6 +140,9 @@ createServer(async (request, response) => {
     const { expected_version: _, ...fields } = payload;
     Object.assign(target, fields, { version: target.version + 1 });
     body = target;
+  } else if (url.pathname === "/__mock/empty-feed") {
+    emptyFeed = url.searchParams.get("on") === "1";
+    body = { emptyFeed };
   } else if (
     url.pathname === "/api/v1/provider/listings" &&
     request.method === "GET"
@@ -197,8 +202,9 @@ createServer(async (request, response) => {
   } else if (url.pathname === "/api/v1/listings") {
     status = url.searchParams.get("q") === "error" ? 503 : 200;
     const match =
-      !url.searchParams.has("city") ||
-      url.searchParams.get("city") === "Albany";
+      !emptyFeed &&
+      (!url.searchParams.has("city") ||
+        url.searchParams.get("city") === "Albany");
     body = {
       items: match ? [listing] : [],
       page: 1,

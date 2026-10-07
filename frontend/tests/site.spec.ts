@@ -23,9 +23,8 @@ test("mobile localized search and no-results state fit without overflow", async 
   const footer = await page.locator(".site-footer").boundingBox();
   expect(finalCard).not.toBeNull();
   expect(footer).not.toBeNull();
-  expect(footer!.y - (finalCard!.y + finalCard!.height)).toBeLessThanOrEqual(
-    40,
-  );
+  expect(footer!.y).toBeGreaterThan(finalCard!.y + finalCard!.height);
+  expect(footer!.y + footer!.height).toBeGreaterThanOrEqual(739);
   await page.getByRole("button", { name: "Фильтры" }).click();
   await expect(page.getByRole("dialog", { name: "Фильтры" })).toBeVisible();
   await page.getByLabel("Город").fill("Missing City");
@@ -246,6 +245,36 @@ test("provider submits an offer and an operator publishes it", async ({
   await editor.getByRole("button", { name: "Save employer" }).click();
   await expect(page.getByText("Employer updated.")).toBeVisible();
   await expect(seabrook.getByText("Identity checked")).toBeVisible();
+});
+
+test("an empty feed centers one message and keeps the footer at the bottom", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:18017/__mock/empty-feed?on=1");
+  try {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/");
+    const message = page.getByRole("heading", {
+      name: "No current vacancies yet",
+    });
+    await expect(message).toBeVisible();
+    await expect(
+      page.getByText("Check back after new employer confirmations"),
+    ).toHaveCount(0);
+    const footer = await page.locator(".site-footer").boundingBox();
+    expect(footer!.y + footer!.height).toBeGreaterThanOrEqual(811);
+    const results = await page.locator(".results-section").boundingBox();
+    const heading = await message.boundingBox();
+    const middle = heading!.y + heading!.height / 2;
+    expect(Math.abs(middle - (results!.y + results!.height / 2))).toBeLessThan(
+      4,
+    );
+    const box = await message.boundingBox();
+    expect(Math.abs(box!.x + box!.width / 2 - 375 / 2)).toBeLessThan(4);
+  } finally {
+    await request.get("http://127.0.0.1:18017/__mock/empty-feed?on=0");
+  }
 });
 
 test("detail shows distinct trust facts and contact destination before leaving", async ({

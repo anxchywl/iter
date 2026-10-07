@@ -109,11 +109,15 @@ export async function DirectoryPage({
                 </nav>
               )}
             </>
-          ) : (
+          ) : hasFilters ? (
             <div className="state-panel">
-              <h3>{hasFilters ? t.noResults : t.noListings}</h3>
-              <p>{hasFilters ? t.noResultsText : t.noListingsText}</p>
-              {hasFilters && <Link href={localePath(locale)}>{t.clear}</Link>}
+              <h3>{t.noResults}</h3>
+              <p>{t.noResultsText}</p>
+              <Link href={localePath(locale)}>{t.clear}</Link>
+            </div>
+          ) : (
+            <div className="state-panel empty-feed">
+              <h3>{t.noListings}</h3>
             </div>
           )
         ) : (

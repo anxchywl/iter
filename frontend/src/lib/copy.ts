@@ -71,8 +71,6 @@ const copy = {
     clear: "Clear filters",
     results: "Vacancies",
     noListings: "No current vacancies yet",
-    noListingsText:
-      "Check back after new employer confirmations are published.",
     noResults: "No vacancies match these filters",
     noResultsText: "Try widening dates, pay, hours, or location.",
     unavailable: "This vacancy is unavailable",
@@ -269,8 +267,6 @@ const copy = {
     clear: "Сбросить фильтры",
     results: "Вакансии",
     noListings: "Пока нет актуальных вакансий",
-    noListingsText:
-      "Новые объявления появятся после подтверждения работодателем.",
     noResults: "По этим фильтрам вакансий нет",
     noResultsText: "Попробуйте расширить даты, оплату, часы или место.",
     unavailable: "Вакансия недоступна",
@@ -467,8 +463,6 @@ const copy = {
     clear: "Сүзгілерді тазалау",
     results: "Бос орындар",
     noListings: "Әзірге қазіргі бос орындар жоқ",
-    noListingsText:
-      "Жаңа хабарландырулар жұмыс беруші растағаннан кейін шығады.",
     noResults: "Бұл сүзгілерге сай бос орын жоқ",
     noResultsText: "Күндерді, ақыны, сағатты немесе орынды кеңейтіп көріңіз.",
     unavailable: "Бұл бос орын қолжетімсіз",
