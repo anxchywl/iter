@@ -1,12 +1,22 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { telegramInitData, type TelegramWindow } from "@/lib/telegram";
 
-type PortalSession = {
-  actor: string;
-  role: "operator" | "provider";
-  organization_id: string | null;
+type Role = "operator" | "provider";
+
+type PortalIdentity = {
+  telegram_user_id: number;
+  role: Role | null;
+  organization_name: string | null;
+};
+
+type Organization = {
+  id: string;
+  key: string;
+  name: string;
+  status: string;
+  member_telegram_ids: number[];
 };
 
 type Employer = {
@@ -61,92 +71,130 @@ type ModerationReport = {
   version: number;
 };
 
-async function portalFetch(path: string, init?: RequestInit) {
-  const response = await fetch(`/api/portal/${path}`, {
-    ...init,
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-  });
-  if (response.status === 401) window.location.assign("/portal/login");
-  const body = response.status === 204 ? null : await response.json();
-  if (!response.ok) throw new Error(body?.detail || "Request failed");
-  return body;
+class PortalAccessError extends Error {}
+
+function failure(status: number) {
+  if (status === 409)
+    return "This item changed or does not allow that action now. Reload and try again.";
+  if (status === 422)
+    return "Some fields are invalid. Check them and try again.";
+  if (status === 403) return "Your account cannot do this.";
+  if (status === 429) return "Too many requests. Wait a minute and try again.";
+  return "The request failed. Try again later.";
 }
 
-export function PortalLogin() {
-  const router = useRouter();
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+async function portalFetch(path: string, init?: RequestInit) {
+  const initData = telegramInitData(window as unknown as TelegramWindow);
+  if (!initData) throw new PortalAccessError("outside");
+  const response = await fetch(`/api/portal/${path}`, {
+    ...init,
+    headers: {
+      Authorization: `tma ${initData}`,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  if (response.status === 401) throw new PortalAccessError("expired");
+  if (!response.ok) throw new Error(failure(response.status));
+  return response.status === 204 ? null : response.json();
+}
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setError("");
-    const secret = String(
-      new FormData(event.currentTarget).get("secret") || "",
-    );
-    try {
-      const response = await fetch("/api/portal/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret }),
-      });
-      const result = await response.json();
-      if (!response.ok)
-        throw new Error("The access key is invalid or unavailable.");
-      router.replace(result.role === "operator" ? "/admin" : "/manage");
-      router.refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Sign in failed.");
-    } finally {
-      setPending(false);
-    }
-  }
+function reasonText(reason: unknown) {
+  return reason instanceof Error ? reason.message : failure(0);
+}
 
+type Access =
+  | { state: "loading" | "outside" | "expired" | "error" }
+  | { state: "none"; telegramId: number }
+  | { state: "ready"; identity: PortalIdentity };
+
+function usePortalAccess(expected: Role): Access {
+  const [access, setAccess] = useState<Access>({ state: "loading" });
+  useEffect(() => {
+    portalFetch("portal/me")
+      .then((identity: PortalIdentity) => {
+        if (!identity.role)
+          setAccess({ state: "none", telegramId: identity.telegram_user_id });
+        else if (identity.role !== expected)
+          window.location.assign(
+            identity.role === "operator" ? "/admin" : "/manage",
+          );
+        else setAccess({ state: "ready", identity });
+      })
+      .catch((reason) =>
+        setAccess({
+          state:
+            reason instanceof PortalAccessError &&
+            (reason.message === "outside" || reason.message === "expired")
+              ? reason.message
+              : "error",
+        }),
+      );
+  }, [expected]);
+  return access;
+}
+
+function AccessNotice({
+  access,
+  openLink,
+}: {
+  access: Exclude<Access, { state: "ready" }>;
+  openLink: string | null;
+}) {
+  if (access.state === "loading")
+    return <p className="portal-loading">Loading workspace…</p>;
   return (
-    <section className="portal-login" aria-labelledby="portal-login-title">
+    <section className="portal-login" aria-labelledby="portal-access-title">
       <p className="portal-kicker">Offer management</p>
-      <h1 id="portal-login-title">Sign in</h1>
-      <p>
-        Use the invitation access key issued to your organization or operator
-        account.
-      </p>
-      <form onSubmit={submit} className="portal-form">
-        <label>
-          Access key
-          <input
-            name="secret"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-        </label>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
+      {access.state === "outside" && (
+        <>
+          <h1 id="portal-access-title">Open in Telegram</h1>
+          <p>
+            Offer management signs you in with your Telegram account, so it
+            opens only inside the iter Mini App.
           </p>
-        )}
-        <button type="submit" disabled={pending}>
-          {pending ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
+          {openLink && (
+            <a className="primary-button" href={openLink}>
+              Open the Mini App
+            </a>
+          )}
+        </>
+      )}
+      {access.state === "expired" && (
+        <>
+          <h1 id="portal-access-title">Sign-in expired</h1>
+          <p>Close the Mini App and open it again from the bot.</p>
+        </>
+      )}
+      {access.state === "none" && (
+        <>
+          <h1 id="portal-access-title">No access yet</h1>
+          <p>
+            Send this Telegram ID to the iter team. They will add it to your
+            organization.
+          </p>
+          <p className="portal-id">
+            <span>Telegram ID</span>
+            <strong>{access.telegramId}</strong>
+          </p>
+        </>
+      )}
+      {access.state === "error" && (
+        <>
+          <h1 id="portal-access-title">Workspace unavailable</h1>
+          <p>Try again in a few minutes.</p>
+        </>
+      )}
     </section>
   );
 }
 
-function PortalHeader({ title, actor }: { title: string; actor: string }) {
-  async function logout() {
-    await fetch("/api/portal/session", { method: "DELETE" });
-    window.location.assign("/portal/login");
-  }
+function PortalHeader({ title, label }: { title: string; label: string }) {
   return (
     <div className="portal-heading">
       <div>
-        <p className="portal-kicker">Signed in as {actor}</p>
+        <p className="portal-kicker">{label}</p>
         <h1>{title}</h1>
       </div>
-      <button className="button-secondary" onClick={logout}>
-        Sign out
-      </button>
     </div>
   );
 }
@@ -189,35 +237,31 @@ function listingPayload(form: FormData) {
   };
 }
 
-export function ProviderWorkspace() {
-  const [session, setSession] = useState<PortalSession | null>(null);
+export function ProviderWorkspace({ openLink }: { openLink: string | null }) {
+  const access = usePortalAccess("provider");
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [listings, setListings] = useState<PortalListing[]>([]);
   const [editing, setEditing] = useState<PortalListing | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const ready = access.state === "ready";
   const load = useCallback(async () => {
     try {
-      const [current, employerResult, listingResult] = await Promise.all([
-        portalFetch("session"),
+      const [employerResult, listingResult] = await Promise.all([
         portalFetch("portal/employers"),
         portalFetch("provider/listings"),
       ]);
-      if (current.role !== "provider") return window.location.assign("/admin");
-      setSession(current);
       setEmployers(employerResult.items);
       setListings(listingResult.items);
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not load offers.",
-      );
+      setError(reasonText(reason));
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (ready) void load();
+  }, [ready, load]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -243,7 +287,7 @@ export function ProviderWorkspace() {
       form.reset();
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save.");
+      setError(reasonText(reason));
     }
   }
 
@@ -260,14 +304,18 @@ export function ProviderWorkspace() {
       );
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Action failed.");
+      setError(reasonText(reason));
     }
   }
 
-  if (!session) return <p className="portal-loading">Loading workspace…</p>;
+  if (access.state !== "ready")
+    return <AccessNotice access={access} openLink={openLink} />;
   return (
     <div className="portal-page">
-      <PortalHeader title="Provider workspace" actor={session.actor} />
+      <PortalHeader
+        title="Provider workspace"
+        label={access.identity.organization_name || "Provider"}
+      />
       {message && (
         <p className="portal-notice" role="status">
           {message}
@@ -568,85 +616,149 @@ export function ProviderWorkspace() {
   );
 }
 
-export function OperatorConsole() {
-  const [session, setSession] = useState<PortalSession | null>(null);
+export function OperatorConsole({ openLink }: { openLink: string | null }) {
+  const access = usePortalAccess("operator");
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [submissions, setSubmissions] = useState<PortalListing[]>([]);
   const [reviews, setReviews] = useState<ModerationReview[]>([]);
   const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const ready = access.state === "ready";
   const load = useCallback(async () => {
     try {
-      const [current, employerResult, queue, reviewQueue, reportQueue] =
-        await Promise.all([
-          portalFetch("session"),
-          portalFetch("portal/employers"),
-          portalFetch("portal/submissions"),
-          portalFetch("admin/reviews"),
-          portalFetch("admin/reports"),
-        ]);
-      if (current.role !== "operator") return window.location.assign("/manage");
-      setSession(current);
+      const [
+        employerResult,
+        queue,
+        reviewQueue,
+        reportQueue,
+        organizationList,
+      ] = await Promise.all([
+        portalFetch("portal/employers"),
+        portalFetch("portal/submissions"),
+        portalFetch("admin/reviews"),
+        portalFetch("admin/reports"),
+        portalFetch("admin/organizations"),
+      ]);
       setEmployers(employerResult.items);
       setSubmissions(queue.items);
       setReviews(reviewQueue.items);
       setReports(reportQueue.items);
+      setOrganizations(organizationList.items);
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Could not load queue.",
-      );
+      setError(reasonText(reason));
     }
   }, []);
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (ready) void load();
+  }, [ready, load]);
 
-  async function decide(
-    listing: PortalListing,
-    decision: "approve" | "changes",
-  ) {
+  async function run(work: () => Promise<unknown>, done: string) {
+    setError("");
+    setMessage("");
+    try {
+      await work();
+      setMessage(done);
+      await load();
+      return true;
+    } catch (reason) {
+      setError(reasonText(reason));
+      return false;
+    }
+  }
+
+  function decide(listing: PortalListing, decision: "approve" | "changes") {
     const note = window.prompt(
       decision === "changes"
         ? "What must the provider change?"
         : "What source evidence did you check?",
     );
     if (!note) return;
-    try {
-      await portalFetch(`portal/submissions/${listing.id}/${decision}`, {
-        method: "POST",
-        body: JSON.stringify({ expected_version: listing.version, note }),
-      });
-      await load();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Decision failed.");
-    }
+    void run(
+      () =>
+        portalFetch(`portal/submissions/${listing.id}/${decision}`, {
+          method: "POST",
+          body: JSON.stringify({ expected_version: listing.version, note }),
+        }),
+      decision === "approve" ? "Offer published." : "Changes requested.",
+    );
   }
 
-  async function moderate(
+  function moderate(
     kind: "reviews" | "reports",
     item: ModerationReview | ModerationReport,
     decision: "approve" | "reject" | "resolve" | "dismiss",
   ) {
     const reason = window.prompt("Record the reason for this decision.");
     if (!reason) return;
-    try {
-      await portalFetch(`admin/${kind}/${item.id}/${decision}`, {
-        method: "POST",
-        body: JSON.stringify({ expected_version: item.version, reason }),
-      });
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Decision failed.");
-    }
+    void run(
+      () =>
+        portalFetch(`admin/${kind}/${item.id}/${decision}`, {
+          method: "POST",
+          body: JSON.stringify({ expected_version: item.version, reason }),
+        }),
+      "Decision recorded.",
+    );
   }
 
-  if (!session) return <p className="portal-loading">Loading console…</p>;
+  function createOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    void run(
+      () =>
+        portalFetch("admin/organizations", {
+          method: "POST",
+          body: JSON.stringify({
+            name: String(data.get("name") || "").trim(),
+            key: String(data.get("key") || "").trim(),
+          }),
+        }),
+      "Organization added.",
+    ).then((done) => done && form.reset());
+  }
+
+  function addMember(
+    organization: Organization,
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const id = Number(new FormData(form).get("telegram_user_id"));
+    void run(
+      () =>
+        portalFetch(`admin/organizations/${organization.key}/members`, {
+          method: "POST",
+          body: JSON.stringify({ telegram_user_id: id }),
+        }),
+      "Member added.",
+    ).then((done) => done && form.reset());
+  }
+
+  function removeMember(organization: Organization, id: number) {
+    void run(
+      () =>
+        portalFetch(`admin/organizations/${organization.key}/members/${id}`, {
+          method: "DELETE",
+        }),
+      "Member removed.",
+    );
+  }
+
+  if (access.state !== "ready")
+    return <AccessNotice access={access} openLink={openLink} />;
   const employerName = (id: string) =>
     employers.find((item) => item.id === id)?.legal_name || "Unknown employer";
   return (
     <div className="portal-page">
-      <PortalHeader title="Operator console" actor={session.actor} />
+      <PortalHeader title="Operator console" label="iter operator" />
+      {message && (
+        <p className="portal-notice" role="status">
+          {message}
+        </p>
+      )}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -742,6 +854,76 @@ export function OperatorConsole() {
                   Resolve
                 </button>
               </div>
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="portal-panel">
+        <h2>Provider organizations</h2>
+        <p>
+          A provider sees a Telegram ID when they open the workspace without
+          access. Add it to their organization. Removing a member ends their
+          access immediately.
+        </p>
+        <form
+          className="portal-form portal-form-grid"
+          onSubmit={createOrganization}
+        >
+          <label>
+            Organization name
+            <input name="name" required maxLength={160} />
+          </label>
+          <label>
+            Short key
+            <input
+              name="key"
+              required
+              maxLength={80}
+              pattern="[a-z0-9][a-z0-9\-]*"
+              title="Lowercase letters, digits, and hyphens"
+            />
+          </label>
+          <div className="portal-actions portal-span">
+            <button type="submit">Add organization</button>
+          </div>
+        </form>
+        <div className="portal-list">
+          {organizations.map((organization) => (
+            <article key={organization.id} className="portal-item">
+              <div>
+                <span className="status-chip">{organization.status}</span>
+                <h3>{organization.name}</h3>
+                <p>{organization.key}</p>
+                <ul className="portal-members">
+                  {organization.member_telegram_ids.map((id) => (
+                    <li key={id}>
+                      <span>Telegram ID {id}</span>
+                      <button
+                        type="button"
+                        className="button-danger"
+                        onClick={() => removeMember(organization, id)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <form
+                className="portal-form portal-member-form"
+                onSubmit={(event) => addMember(organization, event)}
+              >
+                <label>
+                  Member Telegram ID
+                  <input
+                    name="telegram_user_id"
+                    inputMode="numeric"
+                    pattern="[1-9][0-9]{0,15}"
+                    required
+                  />
+                </label>
+                <button type="submit">Add member</button>
+              </form>
             </article>
           ))}
         </div>

@@ -49,7 +49,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://iter_local:${ITER_DB_PASSWORD}@db:5432/iter_local
       ADMIN_CREDENTIALS_JSON: '{"local-operator":"${ITER_ADMIN_TOKEN:?generate .env.local first}"}'
-      PROVIDER_CREDENTIALS_JSON: '{"demo-provider":{"secret":"${ITER_PROVIDER_TOKEN:?generate .env.local first}","organization_key":"demo-provider"}}'
+      TELEGRAM_BOT_TOKEN: ${ITER_TELEGRAM_BOT_TOKEN:?generate .env.local first}
+      OPERATOR_TELEGRAM_IDS: "1000001"
       FEEDBACK_ENABLED: "true"
     depends_on:
       migrate:
@@ -81,7 +82,6 @@ services:
       DIRECTORY_API_URL: http://backend:8000
       DIRECTORY_DEMO_MODE: "true"
       FEEDBACK_ENABLED: "true"
-      PORTAL_COOKIE_SECURE: "false"
       PORTAL_ORIGIN: http://127.0.0.1:${ITER_WEB_PORT:-3018}
     depends_on:
       backend:

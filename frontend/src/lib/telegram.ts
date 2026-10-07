@@ -1,36 +1,61 @@
-type TelegramWindow = {
+export type TelegramWindow = {
   location: { hash: string };
   parent: unknown;
   TelegramWebviewProxy?: {
     postEvent: (eventType: string, eventData: string) => void;
   };
-  postMessage?: unknown;
+  sessionStorage?: Pick<Storage, "getItem" | "setItem">;
 };
 
 type ParentFrame = { postMessage: (message: string, origin: string) => void };
 
-const events: [string, object][] = [
+const launchKey = "iter.telegram.launch";
+
+const startEvents: [string, object][] = [
   ["web_app_ready", {}],
   ["web_app_expand", {}],
   ["web_app_setup_swipe_behavior", { allow_vertical_swipe: false }],
 ];
 
-// asks the telegram client for a full-height view without vertical swipe-to-close
-export function startTelegramApp(win: TelegramWindow): boolean {
+// telegram puts launch parameters only in the first url fragment, so keep them for later navigations
+function launchParams(win: TelegramWindow): URLSearchParams | null {
+  const hash = win.location.hash.replace(/^#/, "");
+  if (/(?:^|&)tgWebAppPlatform=/.test(hash)) {
+    try {
+      win.sessionStorage?.setItem(launchKey, hash);
+    } catch {}
+    return new URLSearchParams(hash);
+  }
+  try {
+    const stored = win.sessionStorage?.getItem(launchKey);
+    return stored ? new URLSearchParams(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function telegramInitData(win: TelegramWindow): string | null {
+  const value = launchParams(win)?.get("tgWebAppData");
+  return value && value.length <= 4096 ? value : null;
+}
+
+function postEvent(win: TelegramWindow, type: string, data: object): boolean {
   const proxy = win.TelegramWebviewProxy;
   if (proxy) {
-    for (const [type, data] of events)
-      proxy.postEvent(type, JSON.stringify(data));
+    proxy.postEvent(type, JSON.stringify(data));
     return true;
   }
-  const framed =
-    win.parent !== win && /tgWebAppPlatform=/.test(win.location.hash);
-  if (!framed) return false;
-  const parent = win.parent as ParentFrame;
-  for (const [type, data] of events)
-    parent.postMessage(
-      JSON.stringify({ eventType: type, eventData: data }),
-      "https://web.telegram.org",
-    );
+  if (win.parent === win || !launchParams(win)) return false;
+  (win.parent as ParentFrame).postMessage(
+    JSON.stringify({ eventType: type, eventData: data }),
+    "https://web.telegram.org",
+  );
+  return true;
+}
+
+// asks the telegram client for a full-height view without vertical swipe-to-close
+export function startTelegramApp(win: TelegramWindow): boolean {
+  if (!win.TelegramWebviewProxy && !launchParams(win)) return false;
+  for (const [type, data] of startEvents) postEvent(win, type, data);
   return true;
 }

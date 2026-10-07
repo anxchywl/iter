@@ -4,27 +4,34 @@ import json
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from secrets import token_urlsafe
 from typing import Annotated, NamedTuple
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import create_engine, func, or_, select
-from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
 from app.db import get_session
-from app.models import AuditEvent, Employer, Listing, Organization, PortalSession, Report, Review
+from app.models import (
+    AuditEvent,
+    Employer,
+    Listing,
+    Organization,
+    OrganizationMember,
+    Report,
+    Review,
+)
 from app.schemas import (
     Confirmation,
     EmployerCreate,
     EmployerEdit,
     ListingContent,
     ListingEdit,
+    MemberAdd,
     OrganizationCreate,
     ReportSubmit,
     ReviewRedaction,
@@ -39,57 +46,65 @@ from app.security import (
     WriteLimiter,
     bearer,
     credentials_from_environment,
-    provider_credentials_from_environment,
+    load_operator_telegram_ids,
+    load_telegram_bot_token,
     require_admin,
-    resolve_portal_credential,
+    telegram_user_id,
 )
 
 FRESHNESS = timedelta(days=14)
+# telegram signs init data once per launch, so this bounds how long one launch stays signed in
+INIT_DATA_MAX_AGE = timedelta(hours=8)
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
 class PortalPrincipal(NamedTuple):
     actor: str
-    role: str
+    telegram_user_id: int
+    role: str | None
     organization_id: str | None
 
 
-def require_portal(
-    session: SessionDep,
-    token: Annotated[str | None, Header(alias="X-Portal-Session")] = None,
-) -> PortalPrincipal:
-    if not token:
+def require_portal(request: Request, session: SessionDep) -> PortalPrincipal:
+    scheme, _, init_data = request.headers.get("authorization", "").partition(" ")
+    bot_token = request.app.state.telegram_bot_token
+    if scheme.lower() != "tma" or not bot_token:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    portal_session = session.get(PortalSession, token_hash)
-    if portal_session is None or portal_session.expires_at <= now_utc():
-        if portal_session is not None:
-            session.delete(portal_session)
-            session.commit()
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if portal_session.role == "provider":
-        organization = session.get(Organization, portal_session.organization_id)
-        if organization is None or organization.status != "active":
-            raise HTTPException(status_code=403, detail="Forbidden")
-    return PortalPrincipal(
-        portal_session.actor, portal_session.role, portal_session.organization_id
-    )
+    try:
+        user_id = telegram_user_id(init_data, bot_token, INIT_DATA_MAX_AGE, now_utc())
+    except (ValueError, KeyError, OverflowError, OSError):
+        raise HTTPException(status_code=401, detail="Unauthorized") from None
+    actor = f"telegram:{user_id}"
+    if user_id in request.app.state.operator_telegram_ids:
+        return PortalPrincipal(actor, user_id, "operator", None)
+    member = session.get(OrganizationMember, user_id)
+    if member is None or session.get(Organization, member.organization_id).status != "active":
+        return PortalPrincipal(actor, user_id, None, None)
+    return PortalPrincipal(actor, user_id, "provider", member.organization_id)
 
 
 PortalDep = Annotated[PortalPrincipal, Depends(require_portal)]
 
 
+def require_member(principal: PortalDep) -> PortalPrincipal:
+    if principal.role is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return principal
+
+
+MemberDep = Annotated[PortalPrincipal, Depends(require_member)]
+
+
 def require_operator(
     request: Request,
     session: SessionDep,
-    token: Annotated[str | None, Header(alias="X-Portal-Session")] = None,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)] = None,
 ) -> str:
-    if token:
-        principal = require_portal(session, token)
+    if request.headers.get("authorization", "").partition(" ")[0].lower() == "tma":
+        principal = require_portal(request, session)
+        session.rollback()
         if principal.role != "operator":
             raise HTTPException(status_code=403, detail="Forbidden")
-        session.rollback()
         return principal.actor
     return require_admin(request, credentials)
 
@@ -194,7 +209,7 @@ def listing_public(listing: Listing) -> dict:
     }
 
 
-def admin_record(record: Employer | Listing | Review) -> dict:
+def admin_record(record: Employer | Listing | Review | Organization) -> dict:
     return {column.name: getattr(record, column.name) for column in record.__table__.columns}
 
 
@@ -209,8 +224,9 @@ def locked_listing(session: Session, listing_id: str, expected_version: int) -> 
 def create_app(
     database_url: str | None = None,
     admin_credentials: dict[str, str] | None = None,
-    provider_credentials: dict[str, dict[str, str]] | None = None,
     feedback_enabled: bool | None = None,
+    telegram_bot_token: str | None = None,
+    operator_telegram_ids: frozenset[int] | None = None,
 ) -> FastAPI:
     url = database_url or os.environ.get("DATABASE_URL")
     if not url or not url.startswith("postgresql+psycopg://"):
@@ -226,14 +242,14 @@ def create_app(
     )
     app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
     app.state.admin_credentials = credentials
-    provider_config = (
-        provider_credentials
-        if provider_credentials is not None
-        else provider_credentials_from_environment()
+    app.state.telegram_bot_token = telegram_bot_token or load_telegram_bot_token(
+        os.environ.get("TELEGRAM_BOT_TOKEN")
     )
-    if set(credentials.values()) & {value["secret"] for value in provider_config.values()}:
-        raise RuntimeError("operator and provider credentials must be distinct")
-    app.state.provider_credentials = provider_config
+    app.state.operator_telegram_ids = (
+        operator_telegram_ids
+        if operator_telegram_ids is not None
+        else load_operator_telegram_ids(os.environ.get("OPERATOR_TELEGRAM_IDS"))
+    )
     app.state.feedback_enabled = (
         os.environ.get("FEEDBACK_ENABLED") == "true"
         if feedback_enabled is None
@@ -477,71 +493,26 @@ def create_app(
                 return {"receipt_id": existing.id, "status": "received"}
         return {"receipt_id": report.id, "status": "received"}
 
-    @app.post("/api/v1/portal/sessions", status_code=201)
-    def create_portal_session(request: Request, session: SessionDep) -> dict:
-        authorization = request.headers.get("authorization", "")
-        scheme, _, secret = authorization.partition(" ")
-        if scheme.lower() != "bearer" or not secret:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        actor, role, organization_key = resolve_portal_credential(request, secret)
-        organization_id = None
-        if organization_key:
-            organization = session.scalar(
-                select(Organization).where(Organization.key == organization_key)
-            )
-            if organization is None or organization.status != "active":
-                raise HTTPException(status_code=403, detail="Forbidden")
-            organization_id = organization.id
-        raw_token = token_urlsafe(32)
-        moment = now_utc()
-        session.execute(sa_delete(PortalSession).where(PortalSession.expires_at <= moment))
-        session.add(
-            PortalSession(
-                token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-                actor=actor,
-                role=role,
-                organization_id=organization_id,
-                created_at=moment,
-                expires_at=moment + timedelta(hours=8),
-            )
+    @app.get("/api/v1/portal/me")
+    def read_portal_identity(session: SessionDep, principal: PortalDep) -> dict:
+        organization = (
+            session.get(Organization, principal.organization_id)
+            if principal.organization_id
+            else None
         )
-        session.commit()
         return {
-            "token": raw_token,
-            "actor": actor,
-            "role": role,
-            "organization_id": organization_id,
-            "expires_at": moment + timedelta(hours=8),
-        }
-
-    @app.get("/api/v1/portal/session")
-    def read_portal_session(principal: PortalDep) -> dict:
-        return {
-            "actor": principal.actor,
+            "telegram_user_id": principal.telegram_user_id,
             "role": principal.role,
-            "organization_id": principal.organization_id,
+            "organization_name": organization.name if organization else None,
         }
-
-    @app.delete("/api/v1/portal/session", status_code=204)
-    def delete_portal_session(
-        session: SessionDep,
-        _: PortalDep,
-        token: Annotated[str, Header(alias="X-Portal-Session")],
-    ) -> None:
-        session.execute(
-            sa_delete(PortalSession).where(
-                PortalSession.token_hash == hashlib.sha256(token.encode()).hexdigest()
-            )
-        )
-        session.commit()
 
     @app.get("/api/v1/portal/employers")
-    def portal_employers(session: SessionDep, _: PortalDep) -> dict:
+    def portal_employers(session: SessionDep, _: MemberDep) -> dict:
         rows = session.scalars(select(Employer).order_by(Employer.legal_name, Employer.id)).all()
         return {"items": [admin_record(row) for row in rows]}
 
     @app.get("/api/v1/provider/listings")
-    def provider_listings(session: SessionDep, principal: PortalDep) -> dict:
+    def provider_listings(session: SessionDep, principal: MemberDep) -> dict:
         if principal.role != "provider":
             raise HTTPException(status_code=403, detail="Forbidden")
         rows = session.scalars(
@@ -553,7 +524,7 @@ def create_app(
 
     @app.post("/api/v1/provider/listings", status_code=201)
     def provider_create_listing(
-        payload: ListingContent, session: SessionDep, principal: PortalDep
+        payload: ListingContent, session: SessionDep, principal: MemberDep
     ) -> dict:
         if principal.role != "provider":
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -587,7 +558,7 @@ def create_app(
         return listing
 
     @app.get("/api/v1/provider/listings/{listing_id}")
-    def provider_read_listing(listing_id: str, session: SessionDep, principal: PortalDep) -> dict:
+    def provider_read_listing(listing_id: str, session: SessionDep, principal: MemberDep) -> dict:
         return jsonable_encoder(admin_record(provider_listing(session, principal, listing_id)))
 
     @app.put("/api/v1/provider/listings/{listing_id}")
@@ -595,7 +566,7 @@ def create_app(
         listing_id: str,
         payload: ListingEdit,
         session: SessionDep,
-        principal: PortalDep,
+        principal: MemberDep,
     ) -> dict:
         session.rollback()
         with session.begin():
@@ -620,7 +591,7 @@ def create_app(
         listing_id: str,
         payload: SubmissionAction,
         session: SessionDep,
-        principal: PortalDep,
+        principal: MemberDep,
     ) -> dict:
         session.rollback()
         with session.begin():
@@ -644,7 +615,7 @@ def create_app(
         listing_id: str,
         payload: SubmissionAction,
         session: SessionDep,
-        principal: PortalDep,
+        principal: MemberDep,
     ) -> dict:
         session.rollback()
         with session.begin():
@@ -668,7 +639,7 @@ def create_app(
         return jsonable_encoder(admin_record(listing))
 
     @app.get("/api/v1/portal/submissions")
-    def operator_submissions(session: SessionDep, principal: PortalDep) -> dict:
+    def operator_submissions(session: SessionDep, principal: MemberDep) -> dict:
         if principal.role != "operator":
             raise HTTPException(status_code=403, detail="Forbidden")
         rows = session.scalars(
@@ -683,7 +654,7 @@ def create_app(
         listing_id: str,
         payload: SubmissionDecision,
         session: SessionDep,
-        principal: PortalDep,
+        principal: MemberDep,
     ) -> dict:
         if principal.role != "operator":
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -710,7 +681,7 @@ def create_app(
         listing_id: str,
         payload: SubmissionDecision,
         session: SessionDep,
-        principal: PortalDep,
+        principal: MemberDep,
     ) -> dict:
         if principal.role != "operator":
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -749,14 +720,93 @@ def create_app(
             audit(session, actor, "organization_created", "organization", organization.id, {})
         return jsonable_encoder(admin_record(organization))
 
-    @app.get("/api/v1/admin/organizations/{organization_key}")
-    def read_organization(organization_key: str, session: SessionDep, _: AdminDep) -> dict:
+    def organization_by_key(session: Session, organization_key: str) -> Organization:
         organization = session.scalar(
             select(Organization).where(Organization.key == organization_key)
         )
         if organization is None:
             raise missing()
-        return jsonable_encoder(admin_record(organization))
+        return organization
+
+    @app.get("/api/v1/admin/organizations")
+    def list_organizations(session: SessionDep, _: AdminDep) -> dict:
+        organizations = session.scalars(
+            select(Organization).order_by(Organization.name, Organization.id)
+        ).all()
+        members = session.execute(
+            select(
+                OrganizationMember.organization_id, OrganizationMember.telegram_user_id
+            ).order_by(OrganizationMember.added_at, OrganizationMember.telegram_user_id)
+        ).all()
+        return {
+            "items": [
+                admin_record(organization)
+                | {
+                    "member_telegram_ids": [
+                        row.telegram_user_id
+                        for row in members
+                        if row.organization_id == organization.id
+                    ]
+                }
+                for organization in organizations
+            ]
+        }
+
+    @app.get("/api/v1/admin/organizations/{organization_key}")
+    def read_organization(organization_key: str, session: SessionDep, _: AdminDep) -> dict:
+        return jsonable_encoder(admin_record(organization_by_key(session, organization_key)))
+
+    @app.post("/api/v1/admin/organizations/{organization_key}/members", status_code=201)
+    def add_member(
+        organization_key: str,
+        payload: MemberAdd,
+        request: Request,
+        session: SessionDep,
+        actor: AdminDep,
+    ) -> dict:
+        if payload.telegram_user_id in request.app.state.operator_telegram_ids:
+            raise conflict()
+        with session.begin():
+            organization = organization_by_key(session, organization_key)
+            if session.get(OrganizationMember, payload.telegram_user_id) is not None:
+                raise conflict()
+            session.add(
+                OrganizationMember(
+                    telegram_user_id=payload.telegram_user_id,
+                    organization_id=organization.id,
+                    added_at=now_utc(),
+                )
+            )
+            audit(
+                session,
+                actor,
+                "member_added",
+                "organization",
+                organization.id,
+                {"telegram_user_id": payload.telegram_user_id},
+            )
+        return {"organization_key": organization_key, "telegram_user_id": payload.telegram_user_id}
+
+    @app.delete(
+        "/api/v1/admin/organizations/{organization_key}/members/{member_id}", status_code=204
+    )
+    def remove_member(
+        organization_key: str, member_id: int, session: SessionDep, actor: AdminDep
+    ) -> None:
+        with session.begin():
+            organization = organization_by_key(session, organization_key)
+            member = session.get(OrganizationMember, member_id, with_for_update=True)
+            if member is None or member.organization_id != organization.id:
+                raise missing()
+            session.delete(member)
+            audit(
+                session,
+                actor,
+                "member_removed",
+                "organization",
+                organization.id,
+                {"telegram_user_id": member_id},
+            )
 
     @app.post("/api/v1/admin/employers", status_code=201)
     def create_employer(payload: EmployerCreate, session: SessionDep, actor: AdminDep) -> dict:

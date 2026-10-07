@@ -69,6 +69,10 @@ class OrganizationCreate(InputModel):
     _name = field_validator("name")(plain_text)
 
 
+class MemberAdd(InputModel):
+    telegram_user_id: int = Field(gt=0, le=2**52 - 1, strict=True)
+
+
 class EmployerEdit(EmployerCreate):
     expected_version: int = Field(ge=1)
     identity_status: str = Field(default="not_checked", pattern="^(not_checked|checked|disputed)$")

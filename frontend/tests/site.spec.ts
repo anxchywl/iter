@@ -134,15 +134,40 @@ test("reduced motion uses immediate section scrolling", async ({ page }) => {
   ).toBe("auto");
 });
 
+function telegramLaunch(path: string, userId: number) {
+  const initData = new URLSearchParams({
+    auth_date: String(Math.floor(Date.now() / 1000)),
+    user: JSON.stringify({ id: userId, first_name: "Test" }),
+    hash: "mock",
+  }).toString();
+  return `${path}#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=weba`;
+}
+
+test("management asks for Telegram and shows unknown members their id", async ({
+  page,
+}) => {
+  await page.goto("/manage");
+  await expect(
+    page.getByRole("heading", { name: "Open in Telegram" }),
+  ).toBeVisible();
+  await page.goto(telegramLaunch("/manage", 5));
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "No access yet" }),
+  ).toBeVisible();
+  await expect(page.locator(".portal-id strong")).toHaveText("5");
+  await page.goto(telegramLaunch("/?tgWebAppStartParam=admin", 1));
+  await expect(page).toHaveURL(/\/admin(#|$)/);
+  await expect(
+    page.getByRole("heading", { name: "Operator console" }),
+  ).toBeVisible();
+});
+
 test("provider submits an offer and an operator publishes it", async ({
   page,
 }) => {
-  await page.goto("/portal/login");
-  await page
-    .getByLabel("Access key")
-    .fill("provider-test-000000000000000000000000");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/manage$/);
+  await page.goto(telegramLaunch("/manage", 2));
+  await expect(page.getByText("Example Provider")).toBeVisible();
   await page.getByLabel("Employer").selectOption("employer-1");
   await page.getByLabel("Internal reference").fill("summer-role");
   await page.getByLabel("Role").fill("Guest services assistant");
@@ -164,21 +189,27 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("Offer submitted for review.")).toBeVisible();
   await expect(page.getByText("pending", { exact: true })).toBeVisible();
 
-  await page.context().clearCookies();
-  await page.goto("/portal/login");
-  await page
-    .getByLabel("Access key")
-    .fill("operator-test-000000000000000000000000");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/admin$/);
+  await page.goto(telegramLaunch("/admin", 1));
   await expect(
     page.getByRole("heading", { name: "Guest services assistant" }),
   ).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept("Official source checked"));
   await page.getByRole("button", { name: "Approve and publish" }).click();
+  await expect(page.getByText("Offer published.")).toBeVisible();
   await expect(page.getByText("No pending offers.")).toBeVisible();
   await expect(page.getByText("No pending experiences.")).toBeVisible();
   await expect(page.getByText("No pending reports.")).toBeVisible();
+
+  await page.getByLabel("Organization name").fill("Example Agency");
+  await page.getByLabel("Short key").fill("example-agency");
+  await page.getByRole("button", { name: "Add organization" }).click();
+  await expect(page.getByText("Organization added.")).toBeVisible();
+  await page.getByLabel("Member Telegram ID").fill("123456");
+  await page.getByRole("button", { name: "Add member" }).click();
+  await expect(page.getByText("Telegram ID 123456")).toBeVisible();
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Member removed.")).toBeVisible();
+  await expect(page.getByText("Telegram ID 123456")).toHaveCount(0);
 });
 
 test("detail shows distinct trust facts and contact destination before leaving", async ({

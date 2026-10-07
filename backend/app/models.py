@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -203,24 +204,16 @@ class Listing(Base):
     )
 
 
-class PortalSession(Base):
-    __tablename__ = "portal_sessions"
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
 
-    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
-    actor: Mapped[str] = mapped_column(String(80), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("role IN ('operator', 'provider')", name="portal_session_role"),
-        CheckConstraint(
-            "(role = 'operator' AND organization_id IS NULL) OR "
-            "(role = 'provider' AND organization_id IS NOT NULL)",
-            name="portal_session_scope",
-        ),
-        Index("ix_portal_sessions_expiry", "expires_at"),
+        CheckConstraint("telegram_user_id > 0", name="member_telegram_id_positive"),
+        Index("ix_organization_members_organization", "organization_id", "telegram_user_id"),
     )
 
 

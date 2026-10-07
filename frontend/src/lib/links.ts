@@ -67,3 +67,14 @@ export function startListing(
     );
   return match?.[1] ?? null;
 }
+
+export function startPortal(
+  value: string | string[] | undefined,
+): "/manage" | "/admin" | null {
+  return value === "manage" ? "/manage" : value === "admin" ? "/admin" : null;
+}
+
+export function miniAppPortalLink(target: "manage" | "admin"): string | null {
+  const base = miniAppLink();
+  return base ? `${base}=${target}` : null;
+}

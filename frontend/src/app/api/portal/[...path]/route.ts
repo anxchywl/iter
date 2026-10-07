@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const allowedRoots = new Set(["admin", "provider", "portal"]);
-const cookieName = "iter_portal_session";
 
 function hasTrustedOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -22,21 +21,20 @@ async function forward(
   if (!path.length || !allowedRoots.has(path[0])) {
     return NextResponse.json({ detail: "Not found" }, { status: 404 });
   }
-  const token = request.cookies.get(cookieName)?.value;
-  if (!token)
+  // only telegram init data is relayed, so operator bearer secrets cannot reach the backend from here
+  const authorization = request.headers.get("authorization") ?? "";
+  if (!authorization.startsWith("tma ") || authorization.length > 4100)
     return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
-  if (request.method !== "GET") {
-    if (!hasTrustedOrigin(request)) {
-      return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
-    }
+  if (request.method !== "GET" && !hasTrustedOrigin(request)) {
+    return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
   }
   const upstreamUrl = new URL(
     `/api/v1/${path.map(encodeURIComponent).join("/")}${request.nextUrl.search}`,
     process.env.DIRECTORY_API_URL ?? "http://127.0.0.1:8000",
   );
-  const headers: Record<string, string> = { "X-Portal-Session": token };
+  const headers: Record<string, string> = { Authorization: authorization };
   let body: string | undefined;
-  if (request.method !== "GET") {
+  if (request.method === "POST" || request.method === "PUT") {
     if (
       request.headers.get("content-type")?.split(";")[0] !== "application/json"
     ) {
@@ -71,3 +69,4 @@ async function forward(
 export const GET = forward;
 export const POST = forward;
 export const PUT = forward;
+export const DELETE = forward;
