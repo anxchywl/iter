@@ -259,7 +259,9 @@ export function PortalLogin() {
         throw new Error(
           response.status === 401
             ? "That access key is not valid. Check the full key and try again."
-            : "Sign in is unavailable right now. Try again shortly.",
+            : response.status === 429
+              ? "Too many sign-in attempts. Wait one minute and try again."
+              : "Sign in is unavailable right now. Try again shortly.",
         );
       window.location.assign("/manage");
     } catch (reason) {
@@ -518,7 +520,13 @@ export function ProviderWorkspace() {
   }, [ready, load]);
 
   useEffect(() => {
-    if (!ready || restoredDraft.current || !formRef.current) return;
+    if (
+      !ready ||
+      employers.length === 0 ||
+      restoredDraft.current ||
+      !formRef.current
+    )
+      return;
     try {
       const saved = JSON.parse(
         sessionStorage.getItem("iter-provider-offer-draft") || "null",
@@ -548,7 +556,7 @@ export function ProviderWorkspace() {
     } catch {
       sessionStorage.removeItem("iter-provider-offer-draft");
     }
-  }, [ready, listings]);
+  }, [ready, employers, listings]);
 
   function rememberDraft(form: HTMLFormElement) {
     const fields = Object.fromEntries(
@@ -970,9 +978,14 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     null,
   );
   const [confirmingKeyId, setConfirmingKeyId] = useState<string | null>(null);
+  const [confirmingStatusId, setConfirmingStatusId] = useState<string | null>(
+    null,
+  );
   const [issuedKey, setIssuedKey] = useState<IssuedAccessKey | null>(null);
+  const [keyCopyStatus, setKeyCopyStatus] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const keyPanelRef = useRef<HTMLDivElement>(null);
 
   const ready = access.state === "ready";
   const load = useCallback(async () => {
@@ -1022,6 +1035,11 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   useEffect(() => {
     if (ready) void load();
   }, [ready, load]);
+  useEffect(() => {
+    if (!issuedKey) return;
+    setKeyCopyStatus("");
+    keyPanelRef.current?.focus();
+  }, [issuedKey]);
 
   async function run(work: () => Promise<unknown>, done: string) {
     setError("");
@@ -1199,7 +1217,10 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
       status === "suspended"
         ? "Company suspended. Existing sessions were signed out."
         : "Company access restored.",
-    );
+    ).then((done) => {
+      if (done) setConfirmingStatusId(null);
+      return done;
+    });
   }
 
   if (access.state !== "ready")
@@ -1422,7 +1443,13 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           automatically so the company can manage its offers in any browser.
         </p>
         {issuedKey && (
-          <div className="portal-key" role="status">
+          <div
+            className="portal-key"
+            role="region"
+            aria-label="New company access key"
+            tabIndex={-1}
+            ref={keyPanelRef}
+          >
             <div>
               <strong>Access key for {issuedKey.organizationName}</strong>
               <p>Copy it now. The full key will not be shown again.</p>
@@ -1433,7 +1460,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                 type="button"
                 onClick={() => {
                   void navigator.clipboard.writeText(issuedKey.accessKey).then(
-                    () => setMessage("Access key copied."),
+                    () => setKeyCopyStatus("Copied"),
                     () =>
                       setError(
                         "Could not copy. Select the key and copy it manually.",
@@ -1441,8 +1468,11 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                   );
                 }}
               >
-                Copy key
+                {keyCopyStatus || "Copy key"}
               </button>
+              <span className="portal-hint" aria-live="polite">
+                {keyCopyStatus && "Access key copied."}
+              </span>
               <button
                 type="button"
                 className="button-secondary"
@@ -1591,21 +1621,45 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                           : "Create access key"}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className={
-                        organization.status === "active"
-                          ? "button-danger"
-                          : "button-secondary"
-                      }
-                      onClick={() =>
-                        void changeOrganizationStatus(organization)
-                      }
-                    >
-                      {organization.status === "active"
-                        ? "Suspend access"
-                        : "Restore access"}
-                    </button>
+                    {organization.status === "active" &&
+                    confirmingStatusId === organization.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="button-danger"
+                          onClick={() =>
+                            void changeOrganizationStatus(organization)
+                          }
+                        >
+                          Confirm suspension
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => setConfirmingStatusId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className={
+                          organization.status === "active"
+                            ? "button-danger"
+                            : "button-secondary"
+                        }
+                        onClick={() =>
+                          organization.status === "active"
+                            ? setConfirmingStatusId(organization.id)
+                            : void changeOrganizationStatus(organization)
+                        }
+                      >
+                        {organization.status === "active"
+                          ? "Suspend access"
+                          : "Restore access"}
+                      </button>
+                    )}
                   </div>
                 </>
               )}

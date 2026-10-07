@@ -237,7 +237,10 @@ class OrganizationMember(Base):
     organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (CheckConstraint("telegram_user_id > 0", name="member_telegram_id_positive"),)
+    __table_args__ = (
+        CheckConstraint("telegram_user_id > 0", name="member_telegram_id_positive"),
+        Index("ix_organization_members_organization", "organization_id", "telegram_user_id"),
+    )
 
 
 class Review(Base):

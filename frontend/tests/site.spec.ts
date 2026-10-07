@@ -167,8 +167,20 @@ test("companies sign in without Telegram while operators use the Mini App", asyn
   ).toBeVisible();
 });
 
+test("company sign in explains throttling", async ({ page }) => {
+  await page.goto("/portal/login");
+  await page.getByLabel("Company access key").fill("rate-limited");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(
+    page.getByText("Too many sign-in attempts. Wait one minute and try again."),
+  ).toBeVisible();
+});
+
 test("links that open Telegram hide inside the Mini App", async ({ page }) => {
   await page.goto("/");
+  await expect(page.locator('script[src="/telegram-mark.js?v=2"]')).toHaveCount(
+    1,
+  );
   const footerLink = page.getByRole("link", { name: "Open in Telegram" });
   await expect(footerLink).toBeVisible();
   await expect(footerLink).toHaveAttribute(
@@ -190,6 +202,9 @@ test("links that open Telegram hide inside the Mini App", async ({ page }) => {
   ).toBeVisible();
   await expect(page.locator(".telegram-link")).toBeHidden();
   await expect(footerLink).toBeHidden();
+
+  await page.goto("/?tgWebAppStartParam=vacancies");
+  await expect(footerLink).toBeHidden();
 });
 
 test("provider submits an offer and an operator publishes it", async ({
@@ -207,6 +222,7 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByLabel("Internal reference")).toHaveValue(
     "summer-role",
   );
+  await expect(page.getByLabel("Employer")).toHaveValue("employer-1");
   await expect(page.getByLabel("Role")).toHaveValue("Guest services assistant");
   await expect(page.getByRole("group", { name: "Offer basics" })).toBeVisible();
   await page.getByLabel("State").fill("New York");
@@ -250,6 +266,9 @@ test("provider submits an offer and an operator publishes it", async ({
     .getByRole("button", { name: "Create company and access key" })
     .click();
   await expect(page.getByText("Company profile created.")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "New company access key" }),
+  ).toBeFocused();
   await expect(page.getByText("iter_company_mock-key")).toBeVisible();
   await expect(
     page.getByText("The full key will not be shown again."),
@@ -260,6 +279,7 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByRole("button", { name: "Confirm replacement" }).click();
   await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
   await page.getByRole("button", { name: "Suspend access" }).click();
+  await page.getByRole("button", { name: "Confirm suspension" }).click();
   await expect(
     page.getByText("Company suspended. Existing sessions were signed out."),
   ).toBeVisible();

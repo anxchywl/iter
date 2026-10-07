@@ -3,7 +3,6 @@ import { AppShell } from "@/components/app-shell";
 import { TelegramBridge } from "@/components/telegram-bridge";
 import { miniAppLink } from "@/lib/links";
 import { requestLocale } from "@/lib/request-locale";
-import { telegramMarkScript } from "@/lib/telegram";
 import "@/app/globals.css";
 
 export default async function RootLayout({
@@ -18,7 +17,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body>
-        <script dangerouslySetInnerHTML={{ __html: telegramMarkScript }} />
+        <script src="/telegram-mark.js?v=2" />
         <TelegramBridge />
         <AppShell
           demoMode={process.env.DIRECTORY_DEMO_MODE === "true"}

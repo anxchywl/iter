@@ -63,15 +63,16 @@ createServer(async (request, response) => {
   let status = 200;
   let body;
   if (url.pathname === "/api/v1/portal/sessions" && request.method === "POST") {
-    const valid = request.headers.authorization === "Bearer company-test-key";
-    status = valid ? 201 : 401;
+    const credential = request.headers.authorization;
+    const valid = credential === "Bearer company-test-key";
+    status = credential === "Bearer rate-limited" ? 429 : valid ? 201 : 401;
     body = valid
       ? {
           token: "provider-session",
           role: "provider",
           organization_id: "provider-org",
         }
-      : { detail: "Unauthorized" };
+      : { detail: status === 429 ? "Too many requests" : "Unauthorized" };
   } else if (url.pathname === "/api/v1/portal/session") {
     const valid = request.headers["x-portal-session"] === "provider-session";
     status = valid ? (request.method === "DELETE" ? 204 : 200) : 401;

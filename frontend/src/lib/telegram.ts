@@ -1,9 +1,11 @@
 export type TelegramWindow = {
-  location: { hash: string };
+  location: { hash: string; search?: string };
   parent: unknown;
   TelegramWebviewProxy?: {
     postEvent: (eventType: string, eventData: string) => void;
   };
+  external?: { notify?: (message: string) => void };
+  Telegram?: { WebApp?: { initData?: string } };
   sessionStorage?: Pick<Storage, "getItem" | "setItem">;
 };
 
@@ -11,9 +13,6 @@ type ParentFrame = { postMessage: (message: string, origin: string) => void };
 
 const launchKey = "iter.telegram.launch";
 const paper = "#ffffff";
-
-// runs before first paint so links meant for opening telegram never flash inside it
-export const telegramMarkScript = `try{if(window.TelegramWebviewProxy||/(?:^|[#&])tgWebAppPlatform=/.test(location.hash)||sessionStorage.getItem("${launchKey}"))document.documentElement.dataset.telegram=""}catch(e){if(window.TelegramWebviewProxy)document.documentElement.dataset.telegram=""}`;
 
 const startEvents: [string, object][] = [
   ["web_app_ready", {}],
@@ -23,7 +22,20 @@ const startEvents: [string, object][] = [
   ["web_app_set_background_color", { color: paper }],
 ];
 
-// telegram puts launch parameters only in the first url fragment, so keep them for later navigations
+function hasLaunchSignal(win: TelegramWindow): boolean {
+  const hash = win.location.hash.replace(/^#/, "");
+  if (/(?:^|&)tgWebAppPlatform=/.test(hash)) return true;
+  const search = (win.location.search ?? "").replace(/^\?/, "");
+  return /(?:^|&)tgWebApp(?:StartParam|Platform)(?:=|&|$)/.test(search);
+}
+
+function hasNativeBridge(win: TelegramWindow): boolean {
+  return Boolean(
+    win.TelegramWebviewProxy || win.external?.notify || win.Telegram?.WebApp,
+  );
+}
+
+// telegram puts launch data in the first fragment and direct-link starts in the query
 function launchParams(win: TelegramWindow): URLSearchParams | null {
   const hash = win.location.hash.replace(/^#/, "");
   if (/(?:^|&)tgWebAppPlatform=/.test(hash)) {
@@ -31,6 +43,13 @@ function launchParams(win: TelegramWindow): URLSearchParams | null {
       win.sessionStorage?.setItem(launchKey, hash);
     } catch {}
     return new URLSearchParams(hash);
+  }
+  const search = (win.location.search ?? "").replace(/^\?/, "");
+  if (/(?:^|&)tgWebApp(?:StartParam|Platform)(?:=|&|$)/.test(search)) {
+    try {
+      win.sessionStorage?.setItem(launchKey, search);
+    } catch {}
+    return new URLSearchParams(search);
   }
   try {
     const stored = win.sessionStorage?.getItem(launchKey);
@@ -51,7 +70,13 @@ function postEvent(win: TelegramWindow, type: string, data: object): boolean {
     proxy.postEvent(type, JSON.stringify(data));
     return true;
   }
-  if (win.parent === win || !launchParams(win)) return false;
+  const external = win.external?.notify;
+  if (external) {
+    external(JSON.stringify({ eventType: type, eventData: data }));
+    return true;
+  }
+  if (win.parent === win || (!hasLaunchSignal(win) && !launchParams(win)))
+    return false;
   (win.parent as ParentFrame).postMessage(
     JSON.stringify({ eventType: type, eventData: data }),
     "https://web.telegram.org",
@@ -61,7 +86,8 @@ function postEvent(win: TelegramWindow, type: string, data: object): boolean {
 
 // asks the telegram client for a full-height view without vertical swipe-to-close
 export function startTelegramApp(win: TelegramWindow): boolean {
-  if (!win.TelegramWebviewProxy && !launchParams(win)) return false;
+  const params = launchParams(win);
+  if (!hasNativeBridge(win) && !hasLaunchSignal(win) && !params) return false;
   for (const [type, data] of startEvents) postEvent(win, type, data);
   return true;
 }

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { clientAddressHeader } from "@/lib/client-address";
-
-const cookieName = "iter_portal_session";
+import { noStore, portalCookieName } from "@/lib/portal-session";
 
 function hasTrustedOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -23,6 +22,7 @@ function backendUrl(path: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const cookieName = portalCookieName();
   if (!hasTrustedOrigin(request))
     return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
   if (request.headers.get("content-type")?.split(";")[0] !== "application/json")
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       .json()
       .catch(() => ({ detail: "Unavailable" }));
     if (!upstream.ok)
-      return NextResponse.json(result, { status: upstream.status });
+      return noStore(NextResponse.json(result, { status: upstream.status }));
     const response = NextResponse.json({
       role: result.role,
       organization_id: result.organization_id,
@@ -62,31 +62,39 @@ export async function POST(request: NextRequest) {
       path: "/",
       maxAge: 8 * 60 * 60,
     });
-    return response;
+    return noStore(response);
   } catch {
-    return NextResponse.json({ detail: "Unavailable" }, { status: 503 });
+    return noStore(
+      NextResponse.json({ detail: "Unavailable" }, { status: 503 }),
+    );
   }
 }
 
 export async function GET(request: NextRequest) {
+  const cookieName = portalCookieName();
   const token = request.cookies.get(cookieName)?.value;
   if (!token)
-    return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+    return noStore(
+      NextResponse.json({ detail: "Unauthorized" }, { status: 401 }),
+    );
   try {
     const upstream = await fetch(backendUrl("/api/v1/portal/session"), {
       headers: { "X-Portal-Session": token },
       cache: "no-store",
       signal: AbortSignal.timeout(6000),
     });
-    return NextResponse.json(await upstream.json(), {
-      status: upstream.status,
-    });
+    return noStore(
+      NextResponse.json(await upstream.json(), { status: upstream.status }),
+    );
   } catch {
-    return NextResponse.json({ detail: "Unavailable" }, { status: 503 });
+    return noStore(
+      NextResponse.json({ detail: "Unavailable" }, { status: 503 }),
+    );
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const cookieName = portalCookieName();
   if (!hasTrustedOrigin(request))
     return NextResponse.json({ detail: "Forbidden" }, { status: 403 });
   const token = request.cookies.get(cookieName)?.value;
@@ -100,5 +108,6 @@ export async function DELETE(request: NextRequest) {
   }
   const response = new NextResponse(null, { status: 204 });
   response.cookies.set(cookieName, "", { path: "/", maxAge: 0 });
-  return response;
+  response.headers.set("Clear-Site-Data", '"cache", "cookies", "storage"');
+  return noStore(response);
 }

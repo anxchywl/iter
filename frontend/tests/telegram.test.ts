@@ -1,12 +1,18 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { miniAppLink, miniAppPortalLink, startPortal } from "../src/lib/links";
 import {
   openOutside,
   startTelegramApp,
   telegramInitData,
-  telegramMarkScript,
   type TelegramWindow,
 } from "../src/lib/telegram";
+
+const telegramMarkScript = readFileSync(
+  join(process.cwd(), "public", "telegram-mark.js"),
+  "utf8",
+);
 
 function storage() {
   const values = new Map<string, string>();
@@ -16,10 +22,10 @@ function storage() {
   };
 }
 
-function framedWindow(hash: string) {
+function framedWindow(hash: string, search = "") {
   const posted: { message: string; origin: string }[] = [];
   const win: TelegramWindow = {
-    location: { hash },
+    location: { hash, search },
     parent: {
       postMessage: (message: string, origin: string) =>
         posted.push({ message, origin }),
@@ -41,7 +47,10 @@ describe("telegram bridge", () => {
   });
 
   it("ignores ordinary browsers and fragments without telegram launch data", () => {
-    const plain: TelegramWindow = { location: { hash: "" }, parent: null };
+    const plain: TelegramWindow = {
+      location: { hash: "", search: "" },
+      parent: null,
+    };
     plain.parent = plain;
     expect(startTelegramApp(plain)).toBe(false);
     expect(openOutside(plain, "https://example.com")).toBe(false);
@@ -78,6 +87,26 @@ describe("telegram bridge", () => {
     expect(startTelegramApp(win)).toBe(false);
     expect(openOutside(win, "https://example.com")).toBe(false);
     expect(posted).toHaveLength(0);
+  });
+
+  it("recognizes direct Mini App launch parameters in the query", () => {
+    const { win, posted } = framedWindow("", "?tgWebAppStartParam=vacancies");
+    expect(startTelegramApp(win)).toBe(true);
+    expect(posted).toHaveLength(5);
+    win.location.search = "";
+    expect(startTelegramApp(win)).toBe(true);
+  });
+
+  it("uses the desktop external bridge when available", () => {
+    const sent: string[] = [];
+    const win: TelegramWindow = {
+      location: { hash: "", search: "" },
+      parent: null,
+      external: { notify: (message) => sent.push(message) },
+    };
+    win.parent = win;
+    expect(startTelegramApp(win)).toBe(true);
+    expect(sent).toHaveLength(5);
   });
 
   it("posts start events only to telegram web", () => {
@@ -119,7 +148,12 @@ describe("telegram bridge", () => {
 
   it("marks the page before paint only inside telegram", () => {
     function marked(
-      globals: { proxy?: boolean; hash?: string; stored?: string },
+      globals: {
+        proxy?: boolean;
+        hash?: string;
+        search?: string;
+        stored?: string;
+      },
       broken = false,
     ) {
       const dataset: Record<string, string> = {};
@@ -139,7 +173,7 @@ describe("telegram bridge", () => {
         telegramMarkScript,
       )(
         globals.proxy ? { TelegramWebviewProxy: {} } : {},
-        { hash: globals.hash ?? "" },
+        { hash: globals.hash ?? "", search: globals.search ?? "" },
         storage,
         { documentElement: { dataset } },
       );
@@ -150,6 +184,7 @@ describe("telegram bridge", () => {
     expect(marked({ hash: "#tgWebAppData=x" })).toBe(false);
     expect(marked({ proxy: true })).toBe(true);
     expect(marked({ hash: "#tgWebAppData=x&tgWebAppPlatform=ios" })).toBe(true);
+    expect(marked({ search: "?tgWebAppStartParam=vacancies" })).toBe(true);
     expect(marked({ stored: "tgWebAppPlatform=weba" })).toBe(true);
     expect(marked({}, true)).toBe(false);
     expect(marked({ proxy: true }, true)).toBe(true);

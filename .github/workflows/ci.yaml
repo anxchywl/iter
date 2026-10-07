@@ -15,20 +15,134 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
+  changes:
+    name: Detect changed areas
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    outputs:
+      backend: ${{ github.event_name == 'schedule' || steps.filter.outputs.backend == 'true' }}
+      frontend: ${{ github.event_name == 'schedule' || steps.filter.outputs.frontend == 'true' }}
+      browser: ${{ github.event_name == 'schedule' || steps.filter.outputs.browser == 'true' }}
+      ci: ${{ github.event_name == 'schedule' || steps.filter.outputs.ci == 'true' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        if: github.event_name != 'schedule'
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'compose.local.yaml'
+              - 'compose.production.yaml'
+              - 'scripts/verify.sh'
+              - 'scripts/local-env.sh'
+            frontend:
+              - 'frontend/**'
+            browser:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'compose.local.yaml'
+              - 'scripts/local-env.sh'
+              - 'scripts/local-seed.sh'
+              - 'scripts/local-seed.py'
+              - 'scripts/verify.sh'
+            ci:
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - 'deploy/**'
+              - 'compose.local.yaml'
+              - 'compose.production.yaml'
+
+  security:
+    name: Security and configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan secrets and validate configuration
+        env:
+          CI: "true"
+        run: ./scripts/verify.sh security
+
+  backend:
+    name: Backend and database
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify backend and database
+        env:
+          CI: "true"
+        run: ./scripts/verify.sh backend
+
+  frontend:
+    name: Frontend quality and build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.22.3
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Verify
+      - name: Verify frontend
         env:
           CI: "true"
-        run: ./scripts/verify.sh
+        run: ./scripts/verify.sh frontend
+
+  browser:
+    name: Browser and stack integration
+    needs: changes
+    if: needs.changes.outputs.browser == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.3
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify browser flows and local stack
+        env:
+          CI: "true"
+        run: ./scripts/verify.sh browser
+
+  verify:
+    name: verify
+    if: ${{ always() }}
+    needs: [changes, security, backend, frontend, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every verification check
+        env:
+          BACKEND_REQUIRED: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule' }}
+          FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule' }}
+          BROWSER_REQUIRED: ${{ needs.changes.outputs.browser == 'true' || needs.changes.outputs.ci == 'true' || github.event_name == 'schedule' }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+        run: |
+          test "$SECURITY_RESULT" = success
+          [[ "$BACKEND_REQUIRED" != true || "$BACKEND_RESULT" = success ]]
+          [[ "$FRONTEND_REQUIRED" != true || "$FRONTEND_RESULT" = success ]]
+          [[ "$BROWSER_REQUIRED" != true || "$BROWSER_RESULT" = success ]]

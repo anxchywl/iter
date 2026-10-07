@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { clientAddressHeader } from "@/lib/client-address";
+import { noStore, portalCookieName } from "@/lib/portal-session";
 
 const allowedRoots = new Set(["admin", "provider", "portal"]);
-const cookieName = "iter_portal_session";
-
 function hasTrustedOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -20,6 +19,7 @@ async function forward(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ) {
+  const cookieName = portalCookieName();
   const { path } = await context.params;
   if (!path.length || !allowedRoots.has(path[0])) {
     return NextResponse.json({ detail: "Not found" }, { status: 404 });
@@ -66,12 +66,15 @@ async function forward(
       cache: "no-store",
       signal: AbortSignal.timeout(6000),
     });
-    if (upstream.status === 204) return new NextResponse(null, { status: 204 });
-    return NextResponse.json(await upstream.json(), {
-      status: upstream.status,
-    });
+    if (upstream.status === 204)
+      return noStore(new NextResponse(null, { status: 204 }));
+    return noStore(
+      NextResponse.json(await upstream.json(), { status: upstream.status }),
+    );
   } catch {
-    return NextResponse.json({ detail: "Unavailable" }, { status: 503 });
+    return noStore(
+      NextResponse.json({ detail: "Unavailable" }, { status: 503 }),
+    );
   }
 }
 
