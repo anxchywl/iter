@@ -209,6 +209,14 @@ def listing_public(listing: Listing) -> dict:
     }
 
 
+def blocks_publication(session: Session, listing: Listing, moment: datetime) -> bool:
+    return (
+        listing.season_year < moment.year
+        or (listing.work_end_date is not None and listing.work_end_date < moment.date())
+        or session.get(Employer, listing.employer_id).identity_status == "disputed"
+    )
+
+
 def admin_record(record: Employer | Listing | Review | Organization) -> dict:
     return {column.name: getattr(record, column.name) for column in record.__table__.columns}
 
@@ -688,9 +696,13 @@ def create_app(
         session.rollback()
         with session.begin():
             listing = locked_listing(session, listing_id, payload.expected_version)
-            if listing.status != "draft" or listing.submission_status != "pending":
-                raise conflict()
             moment = now_utc()
+            if (
+                listing.status != "draft"
+                or listing.submission_status != "pending"
+                or blocks_publication(session, listing, moment)
+            ):
+                raise conflict()
             listing.last_confirmed_at = moment
             listing.confirmation_source_url = listing.official_source_url
             listing.published_at = moment
@@ -995,14 +1007,12 @@ def create_app(
                 if (
                     listing.last_confirmed_at is None
                     or listing.last_confirmed_at <= moment - FRESHNESS
-                    or listing.season_year < moment.year
-                    or (listing.work_end_date is not None and listing.work_end_date < moment.date())
                     or listing.confirmation_source_url is None
                     or (
                         previous in {"paused", "expired"}
                         and listing.last_confirmed_at <= listing.state_changed_at
                     )
-                    or session.get(Employer, listing.employer_id).identity_status == "disputed"
+                    or blocks_publication(session, listing, moment)
                 ):
                     raise conflict()
                 listing.published_at = moment
