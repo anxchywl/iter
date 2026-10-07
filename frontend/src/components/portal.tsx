@@ -17,8 +17,8 @@ type Organization = {
   id: string;
   key: string;
   name: string;
-  website_url: string;
-  address: string;
+  website_url: string | null;
+  address: string | null;
   status: string;
   access_key_hint: string | null;
   access_key_created_at: string | null;
@@ -1363,7 +1363,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                     <input
                       name="website_url"
                       type="url"
-                      defaultValue={organization.website_url}
+                      defaultValue={organization.website_url || ""}
                       required
                     />
                   </label>
@@ -1371,7 +1371,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                     Business address
                     <textarea
                       name="address"
-                      defaultValue={organization.address}
+                      defaultValue={organization.address || ""}
                       required
                       maxLength={300}
                       rows={2}
@@ -1393,14 +1393,18 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
                   <div>
                     <span className="status-chip">{organization.status}</span>
                     <h3>{organization.name}</h3>
-                    <p>{organization.address}</p>
-                    <a
-                      href={organization.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {organization.website_url}
-                    </a>
+                    <p>{organization.address || "Business address needed"}</p>
+                    {organization.website_url ? (
+                      <a
+                        href={organization.website_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {organization.website_url}
+                      </a>
+                    ) : (
+                      <p className="form-error">Company website needed</p>
+                    )}
                     <p className="portal-hint">
                       {organization.access_key_hint
                         ? `Access key active · ends in ${organization.access_key_hint}`

@@ -188,6 +188,31 @@ def test_provider_portal_scopes_submissions_to_company_sessions(client, auth):
     assert client.get("/api/v1/admin/reviews", headers=provider).status_code == 403
     assert client.get("/api/v1/admin/organizations", headers=provider).status_code == 403
     assert client.get("/api/v1/provider/listings", headers=operator).status_code == 403
+    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
+    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
+    assert (
+        client.put(
+            f"/api/v1/provider/listings/{item['id']}",
+            headers=provider,
+            json={"expected_version": item["version"], "content": listing_content(owner["id"])},
+        ).status_code
+        == 409
+    )
+    queue = client.get("/api/v1/portal/submissions", headers=operator)
+    assert [row["id"] for row in queue.json()["items"]] == [item["id"]]
+
+    approved = client.post(
+        f"/api/v1/portal/submissions/{item['id']}/approve",
+        headers=operator,
+        json={"expected_version": item["version"], "note": "official source checked"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "published"
+    assert client.get(f"/api/v1/listings/{item['id']}").status_code == 200
+    events = client.get("/api/v1/admin/audit", headers=auth).json()["items"]
+    assert {"actor": f"telegram:{OPERATOR_TELEGRAM_ID}", "action": "listing_approved"} in [
+        {"actor": event["actor"], "action": event["action"]} for event in events
+    ]
 
 
 def test_portal_login_limit_does_not_block_operator_writes(client, auth):
@@ -217,31 +242,6 @@ def test_portal_login_limit_does_not_block_operator_writes(client, auth):
         ).status_code
         == 201
     )
-    assert client.get("/api/v1/admin/reviews", headers=operator).status_code == 200
-    assert client.get("/api/v1/admin/reports", headers=operator).status_code == 200
-    assert (
-        client.put(
-            f"/api/v1/provider/listings/{item['id']}",
-            headers=provider,
-            json={"expected_version": item["version"], "content": listing_content(owner["id"])},
-        ).status_code
-        == 409
-    )
-    queue = client.get("/api/v1/portal/submissions", headers=operator)
-    assert [row["id"] for row in queue.json()["items"]] == [item["id"]]
-
-    approved = client.post(
-        f"/api/v1/portal/submissions/{item['id']}/approve",
-        headers=operator,
-        json={"expected_version": item["version"], "note": "official source checked"},
-    )
-    assert approved.status_code == 200, approved.text
-    assert approved.json()["status"] == "published"
-    assert client.get(f"/api/v1/listings/{item['id']}").status_code == 200
-    events = client.get("/api/v1/admin/audit", headers=auth).json()["items"]
-    assert {"actor": f"telegram:{OPERATOR_TELEGRAM_ID}", "action": "listing_approved"} in [
-        {"actor": event["actor"], "action": event["action"]} for event in events
-    ]
 
 
 def test_portal_rejects_invalid_company_keys_and_telegram_init_data(client, auth):
@@ -1351,6 +1351,71 @@ def test_report_reason_upgrade_keeps_existing_reports(database_url):
             assert upgraded.organization_id is None
             assert upgraded.submission_status == "draft"
             connection.execute(text("TRUNCATE reports"))
+    finally:
+        command.upgrade(config, "head")
+        engine.dispose()
+        if old is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = old
+
+
+def test_company_key_upgrade_preserves_existing_provider_access(database_url):
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
+    engine = create_engine(database_url)
+    old = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        command.downgrade(config, "7b3d91e4a6c2")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO organizations (id, key, name, status) VALUES "
+                    "('legacy-org', 'legacy-provider', 'Legacy Provider', 'active')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO organization_members "
+                    "(telegram_user_id, organization_id, added_at) VALUES "
+                    "(:user_id, 'legacy-org', now())"
+                ),
+                {"user_id": PROVIDER_TELEGRAM_ID},
+            )
+        command.upgrade(config, "head")
+        with engine.begin() as connection:
+            profile = connection.execute(
+                text(
+                    "SELECT website_url, address, access_key_hash FROM organizations "
+                    "WHERE id = 'legacy-org'"
+                )
+            ).one()
+            assert profile.website_url is None
+            assert profile.address is None
+            assert profile.access_key_hash is None
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT organization_id FROM organization_members "
+                        "WHERE telegram_user_id = :user_id"
+                    ),
+                    {"user_id": PROVIDER_TELEGRAM_ID},
+                ).scalar_one()
+                == "legacy-org"
+            )
+        app = create_app(
+            database_url,
+            {"operator": "test-admin-token-with-at-least-32-characters"},
+            telegram_bot_token=TELEGRAM_BOT_TOKEN,
+            operator_telegram_ids=frozenset({OPERATOR_TELEGRAM_ID}),
+        )
+        with TestClient(app) as migrated_client:
+            identity = migrated_client.get(
+                "/api/v1/portal/me", headers=telegram(PROVIDER_TELEGRAM_ID)
+            )
+            assert identity.status_code == 200
+            assert identity.json()["organization_name"] == "Legacy Provider"
     finally:
         command.upgrade(config, "head")
         engine.dispose()

@@ -38,7 +38,7 @@ def client(database_url: str):
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE portal_sessions, reports, reviews, listings, employers, "
+                "TRUNCATE portal_sessions, organization_members, reports, reviews, listings, employers, "
                 "organizations, audit_events RESTART IDENTITY CASCADE"
             )
         )

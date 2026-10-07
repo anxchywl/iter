@@ -23,6 +23,7 @@ from app.models import (
     Employer,
     Listing,
     Organization,
+    OrganizationMember,
     PortalSession,
     Report,
     Review,
@@ -96,6 +97,10 @@ def require_portal(
     actor = f"telegram:{user_id}"
     if user_id in request.app.state.operator_telegram_ids:
         return PortalPrincipal(actor, user_id, "operator", None)
+    member = session.get(OrganizationMember, user_id)
+    organization = session.get(Organization, member.organization_id) if member else None
+    if organization is not None and organization.status == "active":
+        return PortalPrincipal(actor, user_id, "provider", organization.id)
     return PortalPrincipal(actor, user_id, None, None)
 
 

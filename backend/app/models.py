@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -32,8 +33,8 @@ class Organization(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
-    website_url: Mapped[str] = mapped_column(String(2048), nullable=False)
-    address: Mapped[str] = mapped_column(String(300), nullable=False)
+    website_url: Mapped[str | None] = mapped_column(String(2048))
+    address: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     access_key_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     access_key_hint: Mapped[str | None] = mapped_column(String(12))
@@ -45,7 +46,9 @@ class Organization(Base):
     __table_args__ = (
         CheckConstraint("length(trim(key)) > 0", name="organization_key_nonempty"),
         CheckConstraint("length(trim(name)) > 0", name="organization_name_nonempty"),
-        CheckConstraint("length(trim(address)) > 0", name="organization_address_nonempty"),
+        CheckConstraint(
+            "address IS NULL OR length(trim(address)) > 0", name="organization_address_nonempty"
+        ),
         CheckConstraint("version > 0", name="organization_version_positive"),
         CheckConstraint("status IN ('active', 'suspended')", name="organization_status"),
     )
@@ -225,6 +228,16 @@ class PortalSession(Base):
         CheckConstraint("role = 'provider'", name="portal_session_role"),
         Index("ix_portal_sessions_expiry", "expires_at"),
     )
+
+
+class OrganizationMember(Base):
+    __tablename__ = "organization_members"
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (CheckConstraint("telegram_user_id > 0", name="member_telegram_id_positive"),)
 
 
 class Review(Base):
