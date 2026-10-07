@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { telegramInitData, type TelegramWindow } from "@/lib/telegram";
 
 type Role = "operator" | "provider";
@@ -496,6 +496,8 @@ export function ProviderWorkspace() {
   const [editing, setEditing] = useState<PortalListing | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+  const restoredDraft = useRef(false);
 
   const ready = access.state === "ready";
   const load = useCallback(async () => {
@@ -514,6 +516,56 @@ export function ProviderWorkspace() {
   useEffect(() => {
     if (ready) void load();
   }, [ready, load]);
+
+  useEffect(() => {
+    if (!ready || restoredDraft.current || !formRef.current) return;
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem("iter-provider-offer-draft") || "null",
+      ) as { editingId?: string; fields?: Record<string, string> } | null;
+      if (!saved?.fields) return;
+      if (saved.editingId) {
+        const listing = listings.find((item) => item.id === saved.editingId);
+        if (!listing) return;
+        setEditing(listing);
+      }
+      restoredDraft.current = true;
+      requestAnimationFrame(() => {
+        const form = formRef.current;
+        if (!form) return;
+        for (const [name, value] of Object.entries(saved.fields || {})) {
+          const control = form.elements.namedItem(name);
+          if (
+            control instanceof HTMLInputElement ||
+            control instanceof HTMLSelectElement ||
+            control instanceof HTMLTextAreaElement
+          ) {
+            control.value = value;
+          }
+        }
+        setMessage("Unsaved offer restored.");
+      });
+    } catch {
+      sessionStorage.removeItem("iter-provider-offer-draft");
+    }
+  }, [ready, listings]);
+
+  function rememberDraft(form: HTMLFormElement) {
+    const fields = Object.fromEntries(
+      [...new FormData(form).entries()].map(([name, value]) => [
+        name,
+        String(value),
+      ]),
+    );
+    sessionStorage.setItem(
+      "iter-provider-offer-draft",
+      JSON.stringify({ editingId: editing?.id, fields }),
+    );
+  }
+
+  function discardDraft() {
+    sessionStorage.removeItem("iter-provider-offer-draft");
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -536,6 +588,7 @@ export function ProviderWorkspace() {
         setMessage("Draft created.");
       }
       setEditing(null);
+      discardDraft();
       form.reset();
       await load();
     } catch (reason) {
@@ -600,220 +653,234 @@ export function ProviderWorkspace() {
           publishes them.
         </p>
         <form
-          className="portal-form portal-form-grid"
+          className="portal-form"
           onSubmit={save}
+          onInput={(event) => rememberDraft(event.currentTarget)}
+          ref={formRef}
           key={editing?.id || "new"}
         >
-          <label>
-            Employer
-            <select
-              name="employer_id"
-              defaultValue={editing?.employer_id}
-              required
-            >
-              <option value="">Select employer</option>
-              {employers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.legal_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Internal reference
-            <input
-              name="source_identifier"
-              defaultValue={editing?.source_identifier}
-              required
-              maxLength={120}
-            />
-          </label>
-          <label>
-            Season
-            <input
-              name="season_year"
-              type="number"
-              min="2020"
-              max="2100"
-              defaultValue={
-                editing?.season_year || new Date().getFullYear() + 1
-              }
-              required
-            />
-          </label>
-          <label>
-            Role
-            <input
-              name="role"
-              defaultValue={editing?.role}
-              required
-              maxLength={160}
-            />
-          </label>
-          <label>
-            State
-            <input
-              name="state"
-              defaultValue={editing?.state}
-              required
-              maxLength={80}
-            />
-          </label>
-          <label>
-            City
-            <input
-              name="city"
-              defaultValue={editing?.city}
-              required
-              maxLength={120}
-            />
-          </label>
-          <label>
-            Time zone
-            <input
-              name="location_timezone"
-              defaultValue={editing?.location_timezone || "America/New_York"}
-              required
-            />
-          </label>
-          <label>
-            Job type
-            <input
-              name="category"
-              defaultValue={editing?.category}
-              required
-              maxLength={80}
-            />
-          </label>
-          <label className="portal-span">
-            Duties
-            <textarea
-              name="duties"
-              defaultValue={editing?.duties || ""}
-              maxLength={2000}
-            />
-          </label>
-          <label className="portal-span">
-            Official job source
-            <input
-              name="official_source_url"
-              type="url"
-              defaultValue={editing?.official_source_url}
-              required
-            />
-          </label>
-          <label className="portal-span">
-            Application or contact link
-            <input
-              name="contact_url"
-              type="url"
-              defaultValue={editing?.contact_url}
-              required
-            />
-          </label>
-          <label>
-            Start date
-            <input
-              name="work_start_date"
-              type="date"
-              defaultValue={editing?.work_start_date || ""}
-            />
-          </label>
-          <label>
-            End date
-            <input
-              name="work_end_date"
-              type="date"
-              defaultValue={editing?.work_end_date || ""}
-            />
-          </label>
-          <label>
-            Pay amount
-            <input
-              name="wage_amount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={editing?.wage_amount || ""}
-            />
-          </label>
-          <label>
-            Pay currency
-            <input
-              name="wage_currency"
-              defaultValue={editing?.wage_currency || "USD"}
-              maxLength={3}
-            />
-          </label>
-          <label>
-            Pay basis
-            <select
-              name="wage_basis"
-              defaultValue={editing?.wage_basis || "hour"}
-            >
-              <option value="hour">Hour</option>
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-            </select>
-          </label>
-          <label>
-            Hours per week
-            <input
-              name="expected_hours_per_week"
-              type="number"
-              min="0"
-              max="168"
-              step="0.25"
-              defaultValue={editing?.expected_hours_per_week || ""}
-            />
-          </label>
-          <label className="portal-span">
-            Housing details
-            <textarea
-              name="housing_description"
-              defaultValue={editing?.housing_description || ""}
-              maxLength={2000}
-            />
-          </label>
-          <label>
-            Housing cost
-            <input
-              name="housing_cost_amount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={editing?.housing_cost_amount || ""}
-            />
-          </label>
-          <label>
-            Housing currency
-            <input
-              name="housing_cost_currency"
-              defaultValue={editing?.housing_cost_currency || "USD"}
-              maxLength={3}
-            />
-          </label>
-          <label>
-            Housing basis
-            <select
-              name="housing_cost_basis"
-              defaultValue={editing?.housing_cost_basis || "week"}
-            >
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-              <option value="season">Season</option>
-            </select>
-          </label>
-          <label className="portal-span">
-            Transport details
-            <textarea
-              name="transport_description"
-              defaultValue={editing?.transport_description || ""}
-              maxLength={2000}
-            />
-          </label>
+          <fieldset className="portal-form-section portal-form-grid">
+            <legend>Offer basics</legend>
+            <label>
+              Employer
+              <select
+                name="employer_id"
+                defaultValue={editing?.employer_id}
+                required
+              >
+                <option value="">Select employer</option>
+                {employers.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.legal_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Internal reference
+              <input
+                name="source_identifier"
+                defaultValue={editing?.source_identifier}
+                required
+                maxLength={120}
+              />
+            </label>
+            <label>
+              Season
+              <input
+                name="season_year"
+                type="number"
+                min="2020"
+                max="2100"
+                defaultValue={
+                  editing?.season_year || new Date().getFullYear() + 1
+                }
+                required
+              />
+            </label>
+            <label>
+              Role
+              <input
+                name="role"
+                defaultValue={editing?.role}
+                required
+                maxLength={160}
+              />
+            </label>
+            <label>
+              State
+              <input
+                name="state"
+                defaultValue={editing?.state}
+                required
+                maxLength={80}
+              />
+            </label>
+            <label>
+              City
+              <input
+                name="city"
+                defaultValue={editing?.city}
+                required
+                maxLength={120}
+              />
+            </label>
+            <label>
+              Time zone
+              <input
+                name="location_timezone"
+                defaultValue={editing?.location_timezone || "America/New_York"}
+                required
+              />
+            </label>
+            <label>
+              Job type
+              <input
+                name="category"
+                defaultValue={editing?.category}
+                required
+                maxLength={80}
+              />
+            </label>
+            <label className="portal-span">
+              Duties
+              <textarea
+                name="duties"
+                defaultValue={editing?.duties || ""}
+                maxLength={2000}
+              />
+            </label>
+          </fieldset>
+          <fieldset className="portal-form-section portal-form-grid">
+            <legend>Source and contact</legend>
+            <label className="portal-span">
+              Official job source
+              <input
+                name="official_source_url"
+                type="url"
+                defaultValue={editing?.official_source_url}
+                required
+              />
+            </label>
+            <label className="portal-span">
+              Application or contact link
+              <input
+                name="contact_url"
+                type="url"
+                defaultValue={editing?.contact_url}
+                required
+              />
+            </label>
+          </fieldset>
+          <fieldset className="portal-form-section portal-form-grid">
+            <legend>Dates and pay</legend>
+            <label>
+              Start date
+              <input
+                name="work_start_date"
+                type="date"
+                defaultValue={editing?.work_start_date || ""}
+              />
+            </label>
+            <label>
+              End date
+              <input
+                name="work_end_date"
+                type="date"
+                defaultValue={editing?.work_end_date || ""}
+              />
+            </label>
+            <label>
+              Pay amount
+              <input
+                name="wage_amount"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={editing?.wage_amount || ""}
+              />
+            </label>
+            <label>
+              Pay currency
+              <input
+                name="wage_currency"
+                defaultValue={editing?.wage_currency || "USD"}
+                maxLength={3}
+              />
+            </label>
+            <label>
+              Pay basis
+              <select
+                name="wage_basis"
+                defaultValue={editing?.wage_basis || "hour"}
+              >
+                <option value="hour">Hour</option>
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+              </select>
+            </label>
+            <label>
+              Hours per week
+              <input
+                name="expected_hours_per_week"
+                type="number"
+                min="0"
+                max="168"
+                step="0.25"
+                defaultValue={editing?.expected_hours_per_week || ""}
+              />
+            </label>
+          </fieldset>
+          <fieldset className="portal-form-section portal-form-grid">
+            <legend>Housing and transport</legend>
+            <label className="portal-span">
+              Housing details
+              <textarea
+                name="housing_description"
+                defaultValue={editing?.housing_description || ""}
+                maxLength={2000}
+              />
+            </label>
+            <label>
+              Housing cost
+              <input
+                name="housing_cost_amount"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={editing?.housing_cost_amount || ""}
+              />
+            </label>
+            <label>
+              Housing currency
+              <input
+                name="housing_cost_currency"
+                defaultValue={editing?.housing_cost_currency || "USD"}
+                maxLength={3}
+              />
+            </label>
+            <label>
+              Housing basis
+              <select
+                name="housing_cost_basis"
+                defaultValue={editing?.housing_cost_basis || "week"}
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+                <option value="season">Season</option>
+              </select>
+            </label>
+            <label className="portal-span">
+              Transport details
+              <textarea
+                name="transport_description"
+                defaultValue={editing?.transport_description || ""}
+                maxLength={2000}
+              />
+            </label>
+          </fieldset>
           <div className="portal-actions portal-span">
             <button type="submit">
               {editing ? "Save changes" : "Create draft"}
@@ -822,7 +889,10 @@ export function ProviderWorkspace() {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={() => setEditing(null)}
+                onClick={() => {
+                  discardDraft();
+                  setEditing(null);
+                }}
               >
                 Cancel
               </button>
@@ -855,7 +925,10 @@ export function ProviderWorkspace() {
                     <>
                       <button
                         className="button-secondary"
-                        onClick={() => setEditing(listing)}
+                        onClick={() => {
+                          discardDraft();
+                          setEditing(listing);
+                        }}
                       >
                         Edit
                       </button>
@@ -889,6 +962,8 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const [submissions, setSubmissions] = useState<PortalListing[]>([]);
   const [reviews, setReviews] = useState<ModerationReview[]>([]);
   const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [reviewCursor, setReviewCursor] = useState<string | null>(null);
+  const [reportCursor, setReportCursor] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [editingEmployer, setEditingEmployer] = useState<string | null>(null);
   const [editingOrganization, setEditingOrganization] = useState<string | null>(
@@ -919,11 +994,31 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
       setSubmissions(queue.items);
       setReviews(reviewQueue.items);
       setReports(reportQueue.items);
+      setReviewCursor(reviewQueue.next_cursor);
+      setReportCursor(reportQueue.next_cursor);
       setOrganizations(organizationList.items);
     } catch (reason) {
       setError(reasonText(reason));
     }
   }, []);
+
+  async function loadMoreQueue(kind: "reviews" | "reports", cursor: string) {
+    setError("");
+    try {
+      const result = await portalFetch(
+        `admin/${kind}?cursor=${encodeURIComponent(cursor)}`,
+      );
+      if (kind === "reviews") {
+        setReviews((current) => [...current, ...result.items]);
+        setReviewCursor(result.next_cursor);
+      } else {
+        setReports((current) => [...current, ...result.items]);
+        setReportCursor(result.next_cursor);
+      }
+    } catch (reason) {
+      setError(reasonText(reason));
+    }
+  }
   useEffect(() => {
     if (ready) void load();
   }, [ready, load]);
@@ -1116,6 +1211,13 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   return (
     <div className="portal-page">
       <PortalHeader title="Operator console" label="iter operator" />
+      <nav className="portal-section-nav" aria-label="Operator sections">
+        <a href="#offer-review">Offers {submissions.length}</a>
+        <a href="#experience-review">Experiences {reviews.length}</a>
+        <a href="#issue-reports">Reports {reports.length}</a>
+        <a href="#employers">Employers</a>
+        <a href="#companies">Companies</a>
+      </nav>
       {message && (
         <p className="portal-notice" role="status">
           {message}
@@ -1126,7 +1228,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           {error}
         </p>
       )}
-      <section className="portal-panel">
+      <section className="portal-panel" id="offer-review">
         <h2>Offers awaiting review</h2>
         <p>
           Check the employer-controlled source and every field before
@@ -1171,7 +1273,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           ))}
         </div>
       </section>
-      <section className="portal-panel">
+      <section className="portal-panel" id="experience-review">
         <h2>Experiences awaiting moderation</h2>
         <div className="portal-list">
           {reviews.length === 0 && <p>No pending experiences.</p>}
@@ -1198,8 +1300,17 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
             </article>
           ))}
         </div>
+        {reviewCursor && (
+          <button
+            type="button"
+            className="button-secondary portal-load-more"
+            onClick={() => void loadMoreQueue("reviews", reviewCursor)}
+          >
+            Load more experiences
+          </button>
+        )}
       </section>
-      <section className="portal-panel">
+      <section className="portal-panel" id="issue-reports">
         <h2>Issue reports</h2>
         <div className="portal-list">
           {reports.length === 0 && <p>No pending reports.</p>}
@@ -1226,8 +1337,17 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
             </article>
           ))}
         </div>
+        {reportCursor && (
+          <button
+            type="button"
+            className="button-secondary portal-load-more"
+            onClick={() => void loadMoreQueue("reports", reportCursor)}
+          >
+            Load more reports
+          </button>
+        )}
       </section>
-      <section className="portal-panel">
+      <section className="portal-panel" id="employers">
         <h2>Employers</h2>
         <p>
           Providers choose the US employer for each offer from this list. Add
@@ -1295,7 +1415,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           ))}
         </div>
       </section>
-      <section className="portal-panel">
+      <section className="portal-panel" id="companies">
         <h2>Companies</h2>
         <p>
           Create the company profile first. A private access key is generated

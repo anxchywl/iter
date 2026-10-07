@@ -202,6 +202,13 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByLabel("Employer").selectOption("employer-1");
   await page.getByLabel("Internal reference").fill("summer-role");
   await page.getByLabel("Role").fill("Guest services assistant");
+  await page.reload();
+  await expect(page.getByText("Unsaved offer restored.")).toBeVisible();
+  await expect(page.getByLabel("Internal reference")).toHaveValue(
+    "summer-role",
+  );
+  await expect(page.getByLabel("Role")).toHaveValue("Guest services assistant");
+  await expect(page.getByRole("group", { name: "Offer basics" })).toBeVisible();
   await page.getByLabel("State").fill("New York");
   await page.getByLabel("City").fill("Albany");
   await page.getByLabel("Job type").fill("Hospitality");
@@ -252,6 +259,15 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByRole("button", { name: "Replace access key" }).click();
   await page.getByRole("button", { name: "Confirm replacement" }).click();
   await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
+  await page.getByRole("button", { name: "Suspend access" }).click();
+  await expect(
+    page.getByText("Company suspended. Existing sessions were signed out."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Restore access" }).click();
+  await expect(page.getByText("Company access restored.")).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Operator sections" }),
+  ).toBeVisible();
 
   const addEmployer = page.locator("form", {
     has: page.getByRole("button", { name: "Add employer" }),

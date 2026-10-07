@@ -1559,6 +1559,42 @@ html:has(dialog[open]) {
   background: var(--white);
 }
 
+.portal-section-nav {
+  position: sticky;
+  z-index: 3;
+  top: 0.5rem;
+  display: flex;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+  padding: 0.45rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, white 94%, transparent);
+  box-shadow: 0 8px 24px rgb(20 45 39 / 8%);
+  backdrop-filter: blur(10px);
+}
+
+.portal-section-nav a {
+  flex: none;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.portal-section-nav a:hover,
+.portal-section-nav a:focus-visible {
+  background: var(--mint);
+  color: var(--teal-deep);
+}
+
+.portal-load-more {
+  margin-top: 1rem;
+}
+
 .portal-panel > h2 {
   margin-top: 0;
 }
@@ -1570,6 +1606,21 @@ html:has(dialog[open]) {
 
 .portal-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.portal-form-section {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.portal-form-section legend {
+  grid-column: 1 / -1;
+  margin-bottom: 0.1rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .portal-form label {

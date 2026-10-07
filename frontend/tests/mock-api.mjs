@@ -142,6 +142,17 @@ createServer(async (request, response) => {
     body = organization;
   } else if (
     request.method === "POST" &&
+    /^\/api\/v1\/admin\/organizations\/[^/]+\/status$/.test(url.pathname)
+  ) {
+    const organization = organizations.find(
+      (item) => item.id === url.pathname.split("/").at(-2),
+    );
+    const payload = await jsonBody(request);
+    organization.status = payload.status;
+    organization.version += 1;
+    body = organization;
+  } else if (
+    request.method === "POST" &&
     /^\/api\/v1\/admin\/organizations\/[^/]+\/access-key$/.test(url.pathname)
   ) {
     const organization = organizations.find(
