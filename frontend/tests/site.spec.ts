@@ -31,6 +31,7 @@ test("dark finder keeps interactive surfaces dark and hides the filter count", a
 
   await filter.click();
   const dialog = page.getByRole("dialog", { name: "Filters" });
+  await expect(dialog).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
   const titleBox = await dialog
     .getByRole("heading", { name: "Filters" })
     .boundingBox();
@@ -728,7 +729,9 @@ test("an empty feed centers one message and keeps the footer at the bottom", asy
       4,
     );
     const box = await message.boundingBox();
-    expect(Math.abs(box!.x + box!.width / 2 - 375 / 2)).toBeLessThan(4);
+    expect(
+      Math.abs(box!.x + box!.width / 2 - (results!.x + results!.width / 2)),
+    ).toBeLessThan(4);
   } finally {
     await request.get("http://127.0.0.1:18017/__mock/empty-feed?on=0");
   }
