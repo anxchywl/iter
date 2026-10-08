@@ -40,6 +40,7 @@ const copy = {
     trustContact:
       "The directory does not submit an application or make a sponsor decision for you.",
     directory: "Summer jobs, with the details in view",
+    directoryTitle: "Summer work vacancies",
     intro:
       "Explore employer listings for a Summer Work Travel season. Read the conditions and evidence, then contact the employer yourself.",
     browse: "Browse vacancies",
@@ -50,6 +51,9 @@ const copy = {
     searchPlaceholder: "Search",
     clearSearch: "Clear search",
     filters: "Filters",
+    favourites: "Favourites",
+    favourite: "Favourite",
+    favourited: "Favourited",
     state: "State",
     city: "City",
     season: "Season",
@@ -74,6 +78,7 @@ const copy = {
     results: "Vacancies",
     noListings: "No current vacancies yet",
     noResults: "No vacancies",
+    noFavourites: "No favourite vacancies yet",
     unavailable: "This vacancy is unavailable",
     stale: "This vacancy needs a new confirmation",
     staleText:
@@ -139,6 +144,8 @@ const copy = {
     previous: "Previous page",
     language: "Language",
     switchLanguage: "Switch language to {language}",
+    themeLight: "Use light theme",
+    themeDark: "Use dark theme",
     skip: "Skip to main content",
     reviews: "Experiences",
     reviewsEmpty: "No approved experiences yet.",
@@ -153,7 +160,7 @@ const copy = {
     stepStory: "Your experience",
     reviewHint:
       "Use a short factual account. Do not include names, contact details, documents, private messages, or accusations.",
-    reviewMessage: "Optional experience (500 characters maximum)",
+    reviewMessage: "Optional experience",
     reviewConsent:
       "I understand this is self-reported and will be checked before publication.",
     sendReview: "Send for review",
@@ -172,7 +179,7 @@ const copy = {
     reviewReasonHarmful: "Offensive or threatening",
     reviewReasonOffTopic: "Not about this job",
     reportOther: "Other",
-    reportExplanation: "Optional explanation (300 characters maximum)",
+    reportExplanation: "Optional explanation",
     sendReport: "Send report",
     reportReceived: "Report received. A moderator will review it.",
     submitError: "Could not send this. Please try again.",
@@ -236,6 +243,7 @@ const copy = {
     trustContact:
       "Каталог не подаёт заявку за вас и не принимает решения за спонсора.",
     directory: "Летняя работа: условия на виду",
+    directoryTitle: "Вакансии Summer Work Travel",
     intro:
       "Изучайте вакансии работодателей для сезона Summer Work Travel. Проверьте условия и источники, затем свяжитесь с работодателем напрямую.",
     browse: "Смотреть вакансии",
@@ -246,6 +254,9 @@ const copy = {
     searchPlaceholder: "Поиск",
     clearSearch: "Очистить поиск",
     filters: "Фильтры",
+    favourites: "Избранное",
+    favourite: "В избранное",
+    favourited: "В избранном",
     state: "Штат",
     city: "Город",
     season: "Сезон",
@@ -270,6 +281,7 @@ const copy = {
     results: "Вакансии",
     noListings: "Пока нет актуальных вакансий",
     noResults: "Нет вакансий",
+    noFavourites: "В избранном пока нет вакансий",
     unavailable: "Вакансия недоступна",
     stale: "Нужно новое подтверждение вакансии",
     staleText:
@@ -335,6 +347,8 @@ const copy = {
     previous: "Предыдущая страница",
     language: "Язык",
     switchLanguage: "Сменить язык на {language}",
+    themeLight: "Включить светлую тему",
+    themeDark: "Включить тёмную тему",
     skip: "Перейти к содержимому",
     reviews: "Опыт участников",
     reviewsEmpty: "Пока нет одобренных отзывов.",
@@ -349,7 +363,7 @@ const copy = {
     stepStory: "Ваш опыт",
     reviewHint:
       "Коротко опишите факты. Не указывайте имена, контакты, документы, личную переписку или обвинения.",
-    reviewMessage: "Дополнение по желанию (до 500 символов)",
+    reviewMessage: "Дополнение по желанию",
     reviewConsent:
       "Я понимаю, что это мой личный опыт и отзыв проверят перед публикацией.",
     sendReview: "Отправить на проверку",
@@ -368,7 +382,7 @@ const copy = {
     reviewReasonHarmful: "Оскорбления или угрозы",
     reviewReasonOffTopic: "Не об этой работе",
     reportOther: "Другое",
-    reportExplanation: "Пояснение по желанию (до 300 символов)",
+    reportExplanation: "Пояснение по желанию",
     sendReport: "Отправить сообщение",
     reportReceived: "Сообщение получено. Модератор его рассмотрит.",
     submitError: "Не удалось отправить. Попробуйте ещё раз.",
@@ -432,6 +446,7 @@ const copy = {
     trustContact:
       "Каталог сіздің атыңыздан өтініш бермейді және демеушінің орнына шешім қабылдамайды.",
     directory: "Жазғы жұмыс: шарттары анық көрсетілген",
+    directoryTitle: "Summer Work Travel бос орындары",
     intro:
       "Summer Work Travel маусымына арналған жұмыс берушілердің бос орындарын қараңыз. Шарттары мен дереккөздерін тексеріп, жұмыс берушіге өзіңіз хабарласыңыз.",
     browse: "Бос орындарды қарау",
@@ -442,6 +457,9 @@ const copy = {
     searchPlaceholder: "Іздеу",
     clearSearch: "Іздеуді тазарту",
     filters: "Сүзгілер",
+    favourites: "Таңдаулылар",
+    favourite: "Таңдаулыға қосу",
+    favourited: "Таңдаулыда",
     state: "Штат",
     city: "Қала",
     season: "Маусым",
@@ -466,6 +484,7 @@ const copy = {
     results: "Бос орындар",
     noListings: "Әзірге қазіргі бос орындар жоқ",
     noResults: "Бос орындар жоқ",
+    noFavourites: "Таңдаулы бос орындар әзірге жоқ",
     unavailable: "Бұл бос орын қолжетімсіз",
     stale: "Бос орынды қайта растау қажет",
     staleText:
@@ -531,6 +550,8 @@ const copy = {
     previous: "Алдыңғы бет",
     language: "Тіл",
     switchLanguage: "Тілді ауыстыру: {language}",
+    themeLight: "Ашық тақырыпты қосу",
+    themeDark: "Қараңғы тақырыпты қосу",
     skip: "Негізгі мазмұнға өту",
     reviews: "Қатысушылар тәжірибесі",
     reviewsEmpty: "Әзірге мақұлданған пікір жоқ.",
@@ -545,7 +566,7 @@ const copy = {
     stepStory: "Тәжірибеңіз",
     reviewHint:
       "Қысқа әрі нақты жазыңыз. Адам аттарын, байланыс деректерін, құжаттарды, жеке хаттарды немесе айыптауларды қоспаңыз.",
-    reviewMessage: "Қосымша пікір (ең көбі 500 таңба)",
+    reviewMessage: "Қосымша пікір",
     reviewConsent:
       "Бұл менің жеке тәжірибем екенін және пікір жарияланар алдында тексерілетінін түсінемін.",
     sendReview: "Тексеруге жіберу",
@@ -564,7 +585,7 @@ const copy = {
     reviewReasonHarmful: "Қорлау немесе қорқыту",
     reviewReasonOffTopic: "Бұл жұмыс туралы емес",
     reportOther: "Басқа",
-    reportExplanation: "Қосымша түсіндірме (ең көбі 300 таңба)",
+    reportExplanation: "Қосымша түсіндірме",
     sendReport: "Хабарлама жіберу",
     reportReceived: "Хабарлама алынды. Модератор оны қарайды.",
     submitError: "Жіберілмеді. Қайта көріңіз.",

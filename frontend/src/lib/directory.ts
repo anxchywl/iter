@@ -64,6 +64,7 @@ export type SearchFilters = {
   min_hours: string;
   housing_known: string;
   confirmed_within_days: string;
+  favourites: string;
   page: string;
 };
 
@@ -81,6 +82,7 @@ const limits: Record<keyof SearchFilters, number> = {
   min_hours: 6,
   housing_known: 5,
   confirmed_within_days: 2,
+  favourites: 1,
   page: 3,
 };
 
@@ -105,6 +107,7 @@ export function parseFilters(input: SearchInput): SearchFilters {
   if (!["3", "7", "14"].includes(result.confirmed_within_days)) {
     result.confirmed_within_days = "";
   }
+  if (result.favourites !== "1") result.favourites = "";
   if (!/^[1-9]\d{0,2}$/.test(result.page) || Number(result.page) > 100)
     result.page = "1";
   return result;
@@ -123,6 +126,7 @@ export function searchQuery(filters: SearchFilters): URLSearchParams {
     "min_hours",
     "housing_known",
     "confirmed_within_days",
+    "favourites",
   ];
   for (const key of keys) if (filters[key]) params.set(key, filters[key]);
   if (filters.min_wage) {

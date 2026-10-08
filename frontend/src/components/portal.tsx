@@ -1314,6 +1314,10 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
       )}
       <div className="operator-layout">
         <nav className="portal-section-nav" aria-label="Operator sections">
+          <div className="operator-sidebar-brand">
+            <span className="brand-initial">i</span>ter
+            <small>Operator console</small>
+          </div>
           <p className="portal-nav-label">Review</p>
           {sectionLinks.slice(0, 3).map((section) => (
             <a
@@ -1345,6 +1349,9 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
               <span>{section.label}</span>
             </a>
           ))}
+          <a className="operator-sidebar-back" href="/">
+            ← Back to vacancies
+          </a>
         </nav>
         <div
           className="operator-workspace"

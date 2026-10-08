@@ -15,6 +15,7 @@ import {
   Reviews,
   TrustFacts,
 } from "../src/components/presentation";
+import { DesktopListingPreviewInteractive } from "../src/components/desktop-listing-preview";
 import { ReportForm, ReviewForm } from "../src/components/feedback";
 
 const listing: Listing = {
@@ -122,6 +123,7 @@ describe("public search and rendering", () => {
       wage_currency: "USD",
       wage_basis: "hour",
       housing_known: "true",
+      favourites: "1",
       page: "2",
       admin: "true",
     });
@@ -130,6 +132,7 @@ describe("public search and rendering", () => {
     expect(query.get("min_wage")).toBe("16");
     expect(query.get("wage_currency")).toBe("USD");
     expect(query.get("housing_known")).toBe("true");
+    expect(query.get("favourites")).toBe("1");
     expect(query.get("page_size")).toBe("12");
     expect(query.has("admin")).toBe(false);
     expect(pageQuery(filters, 3)).toContain("page=3");
@@ -149,6 +152,17 @@ describe("public search and rendering", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>");
     expect(plainText("A &amp; B")).toBe("A & B");
+  });
+
+  it("renders a desktop preview without application or saved-job actions", () => {
+    const html = renderToStaticMarkup(
+      <DesktopListingPreviewInteractive listing={listing} locale="en" />,
+    );
+    expect(html).toContain("Demo Employer LLC");
+    expect(html).toContain("View details");
+    expect(html).toContain("Contact employer directly");
+    expect(html).not.toContain(">Apply<");
+    expect(html).not.toContain(">Save<");
   });
 
   it("keeps each trust fact distinct", () => {

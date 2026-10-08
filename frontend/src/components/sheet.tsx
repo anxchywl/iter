@@ -84,7 +84,13 @@ export function Sheet({
 
   function startDrag(event: ReactPointerEvent<HTMLElement>) {
     const node = sheet.ref.current;
-    if (!node || event.button !== 0) return;
+    if (
+      !node ||
+      event.button !== 0 ||
+      (event.target instanceof Element &&
+        event.target.closest("button, a, input, textarea, select"))
+    )
+      return;
     const handle = event.currentTarget;
     const startY = event.clientY;
     const startTime = performance.now();
@@ -134,6 +140,23 @@ export function Sheet({
         <h2 id={titleId} tabIndex={-1} ref={heading} data-focus-hide data-morph>
           {title}
         </h2>
+        <button
+          type="button"
+          className="sheet-close"
+          aria-label="Close"
+          onClick={sheet.close}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="m6 6 12 12M18 6 6 18" />
+          </svg>
+        </button>
       </div>
       {children}
     </dialog>

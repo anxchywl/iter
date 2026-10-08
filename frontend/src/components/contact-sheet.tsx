@@ -25,7 +25,21 @@ function ChannelGlyph({ kind }: { kind: ContactLink["kind"] }) {
   if (kind === "whatsapp") return <ChannelIcon channel="whatsapp" />;
   if (kind === "email") return <ChannelIcon channel="mail" />;
   if (kind === "phone") return <ChannelIcon channel="phone" />;
-  return <ExternalIcon />;
+  return (
+    <svg
+      className="channel-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5C9.9 18.2 8.8 15.4 8.8 12S9.9 5.8 12 3.5Z" />
+    </svg>
+  );
 }
 
 export function ContactAction({

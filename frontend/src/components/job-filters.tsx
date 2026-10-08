@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getCopy, intlLocale, localePath, type Locale } from "@/lib/copy";
 import type { SearchFilters } from "@/lib/directory";
@@ -12,7 +12,13 @@ import { Sheet, useSheet } from "@/components/sheet";
 
 type DateKey = "start_from" | "end_by";
 type ChoiceKey =
-  "currency" | "wage_basis" | "housing_known" | "confirmed_within_days";
+  | "season"
+  | "category"
+  | "currency"
+  | "wage_basis"
+  | "housing_known"
+  | "confirmed_within_days"
+  | "favourites";
 type Panel = DateKey | ChoiceKey;
 
 function isDate(panel: Panel): panel is DateKey {
@@ -30,6 +36,7 @@ export function JobFilters({
   const sheet = useSheet();
   const dialog = sheet.ref;
   const tools = useRef<HTMLDivElement>(null);
+  const desktopFilters = useRef<HTMLElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(filters.q);
   const [dates, setDates] = useState<Record<DateKey, string>>({
@@ -37,12 +44,17 @@ export function JobFilters({
     end_by: filters.end_by,
   });
   const [choices, setChoices] = useState<Record<ChoiceKey, string>>({
+    season: filters.season,
+    category: filters.category,
     currency: filters.wage_currency || "USD",
     wage_basis: filters.wage_basis || "hour",
     housing_known: filters.housing_known,
     confirmed_within_days: filters.confirmed_within_days,
+    favourites: filters.favourites,
   });
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [desktopPanel, setDesktopPanel] = useState<Panel | null>(null);
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(true);
   useFocusMode(tools, undefined, { layout: "css" });
   const activeCount = [
     filters.state,
@@ -55,16 +67,34 @@ export function JobFilters({
     filters.min_hours,
     filters.housing_known,
     filters.confirmed_within_days,
+    filters.favourites,
   ].filter(Boolean).length;
   const labels: Record<Panel, string> = {
+    season: t.season,
+    category: t.category,
     start_from: t.startFrom,
     end_by: t.endBy,
     currency: t.currency,
     wage_basis: t.payBasis,
     housing_known: t.housingKnown,
     confirmed_within_days: t.freshness,
+    favourites: t.favourites,
   };
   const options: Record<ChoiceKey, [string, string][]> = {
+    season: [
+      ["", t.housingAny],
+      ["2027", "2027"],
+      ["2028", "2028"],
+      ["2029", "2029"],
+    ],
+    category: [
+      ["", t.housingAny],
+      ["Hospitality", "Hospitality"],
+      ["Retail", "Retail"],
+      ["Food service", "Food service"],
+      ["Recreation", "Recreation"],
+      ["Housekeeping", "Housekeeping"],
+    ],
     currency: [
       ["USD", "USD"],
       ["KZT", "KZT"],
@@ -86,6 +116,10 @@ export function JobFilters({
       ["7", t.freshness7],
       ["3", t.freshness3],
     ],
+    favourites: [
+      ["", t.results],
+      ["1", t.favourites],
+    ],
   };
   const shortDate = new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
@@ -93,6 +127,26 @@ export function JobFilters({
     year: "numeric",
     timeZone: "UTC",
   });
+
+  useEffect(() => {
+    if (!desktopPanel) return;
+
+    function closePanel(event: PointerEvent) {
+      if (!desktopFilters.current?.contains(event.target as Node))
+        setDesktopPanel(null);
+    }
+
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setDesktopPanel(null);
+    }
+
+    document.addEventListener("pointerdown", closePanel);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closePanel);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [desktopPanel]);
 
   function focusPanelField(key: Panel) {
     dialog.current
@@ -143,6 +197,138 @@ export function JobFilters({
     focusPanelField(key);
   }
 
+  function chooseDesktopDate(key: DateKey, value: string) {
+    setDates((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "start_from" &&
+      current.end_by &&
+      value &&
+      current.end_by < value
+        ? { end_by: "" }
+        : {}),
+    }));
+    setDesktopPanel(null);
+  }
+
+  function chooseDesktopOption(key: ChoiceKey, value: string) {
+    setChoices((current) => ({ ...current, [key]: value }));
+    setDesktopPanel(null);
+  }
+
+  function desktopPickerField(
+    key: Panel,
+    value: string,
+    icon: "date" | "choice",
+  ) {
+    const inputName = key === "currency" ? "wage_currency" : key;
+    const displayValue =
+      icon === "date"
+        ? value
+          ? shortDate.format(new Date(`${value}T00:00:00Z`))
+          : t.anyDate
+        : options[key as ChoiceKey].find(([option]) => option === value)?.[1];
+
+    return (
+      <div
+        className="desktop-picker-field"
+        data-open={desktopPanel === key || undefined}
+      >
+        <span>{labels[key]}</span>
+        <input type="hidden" name={inputName} value={value} />
+        <button
+          type="button"
+          data-desktop-panel-field={key}
+          aria-label={`${labels[key]}: ${displayValue}`}
+          aria-expanded={desktopPanel === key}
+          aria-haspopup={icon === "date" ? "dialog" : "listbox"}
+          onClick={() =>
+            setDesktopPanel((current) => (current === key ? null : key))
+          }
+        >
+          <span data-empty={!value || undefined}>{displayValue}</span>
+          <svg
+            className={
+              icon === "date" ? "picker-calendar-icon" : "picker-chevron-icon"
+            }
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {icon === "date" ? (
+              <>
+                <rect x="4" y="5.5" width="16" height="14" rx="2.5" />
+                <path d="M4 10h16M8.5 3.5v4m7-4v4" />
+              </>
+            ) : (
+              <path d="m7 10 5 5 5-5" />
+            )}
+          </svg>
+        </button>
+        {desktopPanel === key && (
+          <div
+            className="desktop-picker-popover"
+            role={icon === "date" ? "dialog" : undefined}
+            aria-label={labels[key]}
+          >
+            {icon === "date" ? (
+              <>
+                <Calendar
+                  locale={locale}
+                  value={value}
+                  min={key === "end_by" ? dates.start_from : undefined}
+                  onSelect={(nextValue) =>
+                    chooseDesktopDate(key as DateKey, nextValue)
+                  }
+                />
+                {value && (
+                  <button
+                    type="button"
+                    className="desktop-picker-clear"
+                    onClick={() => chooseDesktopDate(key as DateKey, "")}
+                  >
+                    {t.clearDate}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="desktop-choice-list" role="listbox">
+                {options[key as ChoiceKey].map(([option, optionLabel]) => (
+                  <button
+                    key={option}
+                    type="button"
+                    role="option"
+                    aria-selected={value === option}
+                    onClick={() =>
+                      chooseDesktopOption(key as ChoiceKey, option)
+                    }
+                  >
+                    <span>{optionLabel}</span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m5 12.5 4.5 4.5L19 7.5" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function pickerField(key: Panel, value: string, icon: "date" | "choice") {
     return (
       <div className="picker-field" data-field data-morph key={key}>
@@ -163,6 +349,9 @@ export function JobFilters({
                 )?.[1]}
           </span>
           <svg
+            className={
+              icon === "date" ? "picker-calendar-icon" : "picker-chevron-icon"
+            }
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -182,6 +371,38 @@ export function JobFilters({
           </svg>
         </button>
       </div>
+    );
+  }
+
+  function favouriteToggle() {
+    const active = choices.favourites === "1";
+    return (
+      <button
+        type="button"
+        className="favourite-filter-toggle"
+        aria-pressed={active}
+        onClick={(event) => {
+          const next = active ? "" : "1";
+          setChoices((current) => ({ ...current, favourites: next }));
+          const field =
+            event.currentTarget.form?.elements.namedItem("favourites");
+          if (field instanceof HTMLInputElement) field.value = next;
+          event.currentTarget.form?.requestSubmit();
+        }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill={active ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m12 20-1.7-1.55C5.2 13.85 2 10.95 2 7.4A5.4 5.4 0 0 1 7.4 2c1.85 0 3.62.86 4.6 2.22A5.7 5.7 0 0 1 16.6 2 5.4 5.4 0 0 1 22 7.4c0 3.55-3.2 6.45-8.3 11.06Z" />
+        </svg>
+        {t.favourites}
+      </button>
     );
   }
 
@@ -220,6 +441,7 @@ export function JobFilters({
               "min_hours",
               "housing_known",
               "confirmed_within_days",
+              "favourites",
             ] as const
           ).map((key) =>
             filters[key] ? (
@@ -282,8 +504,16 @@ export function JobFilters({
           className="filter-trigger"
           type="button"
           aria-label={activeCount ? `${t.filters}: ${activeCount}` : t.filters}
-          aria-haspopup="dialog"
-          onClick={sheet.open}
+          aria-controls="desktop-filters"
+          aria-expanded={desktopFiltersOpen}
+          onClick={() => {
+            if (window.matchMedia("(min-width: 900px)").matches) {
+              setDesktopFiltersOpen((open) => !open);
+              setDesktopPanel(null);
+            } else {
+              sheet.open();
+            }
+          }}
         >
           <svg
             viewBox="0 0 24 24"
@@ -295,9 +525,90 @@ export function JobFilters({
           >
             <path d="M4 7h16M7 12h10m-7 5h4" />
           </svg>
-          {activeCount > 0 && <span aria-hidden="true">{activeCount}</span>}
         </button>
       </div>
+      <aside
+        id="desktop-filters"
+        ref={desktopFilters}
+        className="desktop-filters"
+        data-open={desktopFiltersOpen}
+        aria-labelledby="desktop-filter-title"
+      >
+        <form action={localePath(locale)} method="get">
+          <div className="desktop-filter-head">
+            <h2 id="desktop-filter-title">{t.filters}</h2>
+            <div className="desktop-filter-head-actions">
+              <a href={localePath(locale)}>{t.clear}</a>
+            </div>
+          </div>
+          <div className="filter-favourite-row">{favouriteToggle()}</div>
+          <input type="hidden" name="q" value={query} />
+          <div className="desktop-filter-group">
+            <label>
+              {t.state}
+              <input name="state" maxLength={80} defaultValue={filters.state} />
+            </label>
+            <label>
+              {t.city}
+              <input name="city" maxLength={120} defaultValue={filters.city} />
+            </label>
+            {desktopPickerField("season", choices.season, "choice")}
+            {desktopPickerField("category", choices.category, "choice")}
+          </div>
+          <div className="desktop-filter-group">
+            <p>{t.dates}</p>
+            {desktopPickerField("start_from", dates.start_from, "date")}
+            {desktopPickerField("end_by", dates.end_by, "date")}
+          </div>
+          <div className="desktop-filter-group">
+            <p>{t.pay}</p>
+            <label>
+              {t.minPay}
+              <input
+                name="min_wage"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="99999999"
+                step="0.01"
+                defaultValue={filters.min_wage}
+              />
+            </label>
+            <div className="desktop-filter-row">
+              {desktopPickerField("currency", choices.currency, "choice")}
+              {desktopPickerField("wage_basis", choices.wage_basis, "choice")}
+            </div>
+            <label>
+              {t.minHours}
+              <input
+                name="min_hours"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="168"
+                step="0.5"
+                defaultValue={filters.min_hours}
+              />
+            </label>
+          </div>
+          <div className="desktop-filter-group">
+            <input type="hidden" name="favourites" value={choices.favourites} />
+            {desktopPickerField(
+              "housing_known",
+              choices.housing_known,
+              "choice",
+            )}
+            {desktopPickerField(
+              "confirmed_within_days",
+              choices.confirmed_within_days,
+              "choice",
+            )}
+          </div>
+          <button className="desktop-filter-submit" type="submit">
+            {t.apply}
+          </button>
+        </form>
+      </aside>
       <Sheet
         sheet={sheet}
         className="filter-dialog"
@@ -311,6 +622,11 @@ export function JobFilters({
         onClosed={() => setPanel(null)}
       >
         <form action={localePath(locale)} method="get">
+          {!panel && (
+            <div className="filter-favourite-row" data-focus-hide data-morph>
+              {favouriteToggle()}
+            </div>
+          )}
           <input type="hidden" name="q" value={query} />
           <input type="hidden" name="start_from" value={dates.start_from} />
           <input type="hidden" name="end_by" value={dates.end_by} />
@@ -391,25 +707,8 @@ export function JobFilters({
               {t.city}
               <input name="city" maxLength={120} defaultValue={filters.city} />
             </label>
-            <label data-field data-morph>
-              {t.season}
-              <input
-                name="season"
-                type="number"
-                inputMode="numeric"
-                min="2020"
-                max="2100"
-                defaultValue={filters.season}
-              />
-            </label>
-            <label data-field data-morph>
-              {t.category}
-              <input
-                name="category"
-                maxLength={80}
-                defaultValue={filters.category}
-              />
-            </label>
+            {pickerField("season", choices.season, "choice")}
+            {pickerField("category", choices.category, "choice")}
             {pickerField("start_from", dates.start_from, "date")}
             {pickerField("end_by", dates.end_by, "date")}
             <label data-field data-morph>

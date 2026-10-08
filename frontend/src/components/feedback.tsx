@@ -201,6 +201,7 @@ export function ReviewForm({
   const steps = useSteps(sheet, form);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [textLength, setTextLength] = useState(0);
   const titleId = `review-sheet-${listingId}`;
   const matches: [string, string][] = [
     ["yes", t.matched],
@@ -262,6 +263,7 @@ export function ReviewForm({
         onClosed={() => {
           steps.reset();
           setStatus("");
+          setTextLength(0);
         }}
       >
         {steps.sent ? (
@@ -309,7 +311,15 @@ export function ReviewForm({
           <Step index={2} step={steps.step} title={t.stepStory}>
             <label className="step-field" data-field data-morph>
               {t.reviewMessage}
-              <textarea name="text" maxLength={500} rows={4} />
+              <textarea
+                name="text"
+                maxLength={500}
+                rows={4}
+                onChange={(event) => setTextLength(event.target.value.length)}
+              />
+              <span className="character-counter" aria-live="polite">
+                {textLength} / 500
+              </span>
             </label>
             <p className="step-hint" data-focus-hide>
               {t.reviewHint}
@@ -424,6 +434,7 @@ export function ReportForm({
   const steps = useSteps(sheet, form);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [explanationLength, setExplanationLength] = useState(0);
   const titleId = `report-sheet-${itemId}`;
   const offset = reviews.length ? 1 : 0;
   const subjects: [string, string][] = [
@@ -497,6 +508,7 @@ export function ReportForm({
           steps.reset();
           setStatus("");
           setSubject(`${itemType}:${itemId}`);
+          setExplanationLength(0);
         }}
       >
         {steps.sent ? (
@@ -532,7 +544,17 @@ export function ReportForm({
           >
             <label className="step-field" data-field data-morph>
               <span className="sr-only">{t.reportExplanation}</span>
-              <textarea name="explanation" maxLength={300} rows={4} />
+              <textarea
+                name="explanation"
+                maxLength={300}
+                rows={4}
+                onChange={(event) =>
+                  setExplanationLength(event.target.value.length)
+                }
+              />
+              <span className="character-counter" aria-live="polite">
+                {explanationLength} / 300
+              </span>
             </label>
             <p className="step-hint" data-focus-hide>
               {t.reviewHint}

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import type { MouseEventHandler } from "react";
 import type { Copy, Locale } from "@/lib/copy";
 import { fill, getCopy, intlLocale, localePath } from "@/lib/copy";
 import type { Listing, Review } from "@/lib/directory";
+import { ContactAction } from "@/components/contact-sheet";
 import { ExternalIcon } from "@/components/icons";
 import { LinkPending } from "@/components/link-pending";
 import { plainText } from "@/lib/directory";
@@ -37,7 +39,7 @@ export function dateRange(
   return t.unknown;
 }
 
-function amount(
+export function amount(
   value: string | null,
   currency: string | null,
   basis: string | null,
@@ -202,16 +204,21 @@ export function Conditions({
 export function ListingCard({
   listing,
   locale,
+  onSelect,
+  selected = false,
 }: {
   listing: Listing;
   locale: Locale;
+  onSelect?: MouseEventHandler<HTMLElement>;
+  selected?: boolean;
 }) {
   const t = getCopy(locale);
   return (
-    <article className="listing-card">
+    <article className="listing-card" data-selected={selected || undefined}>
       <Link
         className="listing-link"
         href={localePath(locale, `/jobs/${listing.id}`)}
+        onClick={onSelect}
       >
         <div className="listing-summary">
           <span className="listing-employer">
@@ -249,7 +256,7 @@ export function ListingCard({
   );
 }
 
-export { ContactAction } from "@/components/contact-sheet";
+export { ContactAction };
 
 function reviewAnswer(value: string, t: Copy): string {
   return value === "yes"
