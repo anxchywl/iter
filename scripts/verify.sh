@@ -98,6 +98,7 @@ if includes browser; then
   "${compose[@]}" build migrate backend frontend
   "${compose[@]}" up -d --wait frontend
   curl --fail --silent --show-error "http://127.0.0.1:$ITER_WEB_PORT/" >/dev/null
+  curl --fail --silent --show-error "http://127.0.0.1:$ITER_WEB_PORT/telegram-mark.js" | grep -q "tgWebAppPlatform"
   ITER_COMPOSE_PROJECT="iter-directory-check-$verify_scope" "$repo_root/scripts/local-seed.sh"
   ITER_COMPOSE_PROJECT="iter-directory-check-$verify_scope" "$repo_root/scripts/local-seed.sh" | grep -q "nothing to add"
 fi

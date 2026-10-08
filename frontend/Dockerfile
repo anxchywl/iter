@@ -12,6 +12,7 @@ WORKDIR /app
 RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --home-dir /app --no-create-home app
 COPY --from=build --chown=10001:10001 /app/.next/standalone ./
 COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
+COPY --from=build --chown=10001:10001 /app/public ./public
 RUN mkdir -p .next/cache && chown -R 10001:10001 .next/cache
 USER 10001:10001
 EXPOSE 3000
