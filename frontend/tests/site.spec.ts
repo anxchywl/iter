@@ -234,6 +234,18 @@ function telegramLaunch(path: string, userId: number) {
   return `${path}#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=weba`;
 }
 
+test("footer exposes admin navigation only inside the Telegram Mini App", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const adminLink = page.getByRole("link", { name: "Admin console" });
+  await expect(adminLink).toBeHidden();
+
+  await page.goto(telegramLaunch("/?session=non-operator", 123456));
+  await expect(adminLink).toHaveAttribute("href", "/admin");
+  await expect(adminLink).toBeVisible();
+});
+
 test("companies sign in without Telegram while operators use the Mini App", async ({
   page,
 }) => {

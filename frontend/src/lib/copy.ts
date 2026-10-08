@@ -19,6 +19,7 @@ const copy = {
     footerProject: "Project",
     sourceCode: "Source code on GitHub",
     manageOffers: "For employers",
+    operatorConsole: "Admin console",
     moreFilters: "More filters",
     stepFind: "Find a role",
     stepFindText:
@@ -215,6 +216,7 @@ const copy = {
     footerProject: "Проект",
     sourceCode: "Исходный код на GitHub",
     manageOffers: "Работодателям",
+    operatorConsole: "Панель администратора",
     moreFilters: "Больше фильтров",
     stepFind: "Найдите вакансию",
     stepFindText: "Выберите сезон и условия, которые важны именно вам.",
@@ -410,6 +412,7 @@ const copy = {
     footerProject: "Жоба",
     sourceCode: "GitHub-тағы бастапқы код",
     manageOffers: "Жұмыс берушілерге",
+    operatorConsole: "Әкімші панелі",
     moreFilters: "Қосымша сүзгілер",
     stepFind: "Бос орынды табыңыз",
     stepFindText: "Маусымды және өзіңізге маңызды шарттарды таңдаңыз.",

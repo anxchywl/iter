@@ -73,7 +73,8 @@ function launchParams(win: TelegramWindow): URLSearchParams | null {
 }
 
 export function telegramInitData(win: TelegramWindow): string | null {
-  const value = launchParams(win)?.get("tgWebAppData");
+  const value =
+    launchParams(win)?.get("tgWebAppData") ?? win.Telegram?.WebApp?.initData;
   return value && value.length <= 4096 ? value : null;
 }
 

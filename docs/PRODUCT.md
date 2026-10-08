@@ -55,6 +55,8 @@ Search offers exact state, city, category, and season filters; role/employer tex
 
 The language switch sits in the footer beside the repository link; employer access remains in the header.
 
+The Telegram Mini App footer links to the Admin console. This is navigation only; the server verifies Telegram identity and operator membership before returning or changing any admin data.
+
 When filters return no matches, show only a centered “No vacancies” message in the selected language; do not show filter advice or a clear-filters link in that empty state.
 
 Provide distinct empty, loading, stale, unavailable, rejected, and error states. A stale listing is never styled as current. A direct link to a paused, closed, or expired listing explains that it is unavailable without exposing unpublished changes. Development fixtures or mock jobs must be visibly marked and must never appear as live production vacancies.

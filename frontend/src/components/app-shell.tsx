@@ -96,6 +96,9 @@ export function AppShell({
               <span>
                 © {year} {t.brand}
               </span>
+              <Link className="operator-console-link" href="/admin">
+                {t.operatorConsole}
+              </Link>
               {telegram && (
                 <a
                   className="telegram-launch"

@@ -855,6 +855,16 @@ p {
   margin-top: 1rem;
   border-top: 1px solid var(--line);
 }
+
+.operator-console-link {
+  color: var(--teal-deep);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+html:not([data-telegram]) .operator-console-link {
+  display: none;
+}
 .footer-inner {
   padding: 0.8rem 1rem calc(1rem + env(safe-area-inset-bottom));
 }

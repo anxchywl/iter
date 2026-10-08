@@ -46,6 +46,12 @@ describe("telegram bridge", () => {
     expect(telegramInitData(win)).toBe(initData);
   });
 
+  it("reads init data from the Telegram Web App bridge", () => {
+    const { win } = framedWindow("");
+    win.Telegram = { WebApp: { initData } };
+    expect(telegramInitData(win)).toBe(initData);
+  });
+
   it("ignores ordinary browsers and fragments without telegram launch data", () => {
     const plain: TelegramWindow = {
       location: { hash: "", search: "" },
