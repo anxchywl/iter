@@ -418,6 +418,13 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("pending", { exact: true })).toBeVisible();
 
   await page.goto(telegramLaunch("/admin", 1));
+  const operatorSections = page.getByRole("navigation", {
+    name: "Operator sections",
+  });
+  await expect(
+    operatorSections.getByRole("link", { name: "Offers 1 pending" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Employers" })).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Guest services assistant" }),
   ).toBeVisible();
@@ -428,9 +435,16 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByRole("button", { name: "Approve and publish" }).click();
   await expect(page.getByText("Offer published.")).toBeVisible();
   await expect(page.getByText("No pending offers.")).toBeVisible();
+  await operatorSections
+    .getByRole("link", { name: "Experiences 0 pending" })
+    .click();
   await expect(page.getByText("No pending experiences.")).toBeVisible();
+  await operatorSections
+    .getByRole("link", { name: "Reports 0 pending" })
+    .click();
   await expect(page.getByText("No pending reports.")).toBeVisible();
 
+  await operatorSections.getByRole("link", { name: "Companies" }).click();
   await page.getByLabel("Company name").fill("Example Agency");
   await page.getByLabel("Company website").fill("https://agency.example.com");
   await page
@@ -463,6 +477,7 @@ test("provider submits an offer and an operator publishes it", async ({
     page.getByRole("navigation", { name: "Operator sections" }),
   ).toBeVisible();
 
+  await operatorSections.getByRole("link", { name: "Employers" }).click();
   const addEmployer = page.locator("form", {
     has: page.getByRole("button", { name: "Add employer" }),
   });

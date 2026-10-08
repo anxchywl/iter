@@ -5,6 +5,13 @@ import { telegramInitData, type TelegramWindow } from "@/lib/telegram";
 
 type Role = "operator" | "provider";
 
+type OperatorSection =
+  | "offer-review"
+  | "experience-review"
+  | "issue-reports"
+  | "employers"
+  | "companies";
+
 type PortalIdentity = {
   telegram_user_id: number | null;
   role: Role | null;
@@ -965,6 +972,8 @@ export function ProviderWorkspace() {
 
 export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const access = usePortalAccess("operator");
+  const [activeSection, setActiveSection] =
+    useState<OperatorSection>("offer-review");
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [submissions, setSubmissions] = useState<PortalListing[]>([]);
   const [reviews, setReviews] = useState<ModerationReview[]>([]);
@@ -984,6 +993,7 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const [keyCopyStatus, setKeyCopyStatus] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const keyPanelRef = useRef<HTMLDivElement>(null);
 
   const ready = access.state === "ready";
@@ -1009,8 +1019,10 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
       setReviewCursor(reviewQueue.next_cursor);
       setReportCursor(reportQueue.next_cursor);
       setOrganizations(organizationList.items);
+      return true;
     } catch (reason) {
       setError(reasonText(reason));
+      return false;
     }
   }, []);
 
@@ -1034,6 +1046,20 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   useEffect(() => {
     if (ready) void load();
   }, [ready, load]);
+  useEffect(() => {
+    const hash = window.location.hash.slice(1) as OperatorSection;
+    if (
+      [
+        "offer-review",
+        "experience-review",
+        "issue-reports",
+        "employers",
+        "companies",
+      ].includes(hash)
+    ) {
+      setActiveSection(hash);
+    }
+  }, []);
   useEffect(() => {
     if (!issuedKey) return;
     setKeyCopyStatus("");
@@ -1222,22 +1248,60 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     });
   }
 
+  async function refresh() {
+    setRefreshing(true);
+    setMessage("");
+    setError("");
+    const loaded = await load();
+    setRefreshing(false);
+    if (loaded) setMessage("Workspace refreshed.");
+  }
+
+  function showSection(section: OperatorSection) {
+    setActiveSection(section);
+    window.history.replaceState(null, "", `#${section}`);
+    document
+      .getElementById("operator-workspace")
+      ?.focus({ preventScroll: true });
+  }
+
   if (access.state !== "ready")
     return (
       <AccessNotice access={access} openLink={openLink} expected="operator" />
     );
   const employerName = (id: string) =>
     employers.find((item) => item.id === id)?.legal_name || "Unknown employer";
+  const sectionLinks: Array<{
+    id: OperatorSection;
+    label: string;
+    count?: number;
+  }> = [
+    { id: "offer-review", label: "Offers", count: submissions.length },
+    {
+      id: "experience-review",
+      label: "Experiences",
+      count: reviews.length,
+    },
+    { id: "issue-reports", label: "Reports", count: reports.length },
+    { id: "employers", label: "Employers" },
+    { id: "companies", label: "Companies" },
+  ];
   return (
     <div className="portal-page">
-      <PortalHeader title="Operator console" label="iter operator" />
-      <nav className="portal-section-nav" aria-label="Operator sections">
-        <a href="#offer-review">Offers {submissions.length}</a>
-        <a href="#experience-review">Experiences {reviews.length}</a>
-        <a href="#issue-reports">Reports {reports.length}</a>
-        <a href="#employers">Employers</a>
-        <a href="#companies">Companies</a>
-      </nav>
+      <div className="portal-heading portal-heading-admin">
+        <div>
+          <p className="portal-kicker">iter operator</p>
+          <h1>Operator console</h1>
+        </div>
+        <button
+          type="button"
+          className="button-secondary portal-refresh"
+          onClick={() => void refresh()}
+          disabled={refreshing}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
       {message && (
         <p className="portal-notice" role="status">
           {message}
@@ -1248,424 +1312,518 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           {error}
         </p>
       )}
-      <section className="portal-panel" id="offer-review">
-        <h2>Offers awaiting review</h2>
-        <p>
-          Check the employer-controlled source and every field before
-          publishing.
-        </p>
-        <div className="portal-list">
-          {submissions.length === 0 && <p>No pending offers.</p>}
-          {submissions.map((listing) => (
-            <article key={listing.id} className="portal-item portal-review">
-              <div>
-                <span className="status-chip">pending</span>
-                <h3>{listing.role}</h3>
-                <p>
-                  {employerName(listing.employer_id)} · {listing.city},{" "}
-                  {listing.state} · Season {listing.season_year}
-                </p>
-                <a
-                  href={listing.official_source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Check official source
-                </a>
-              </div>
-              <DecisionActions
-                decisions={[
-                  {
-                    key: "changes",
-                    label: "Request changes",
-                    prompt: "What must the provider change?",
-                  },
-                  {
-                    key: "approve",
-                    label: "Approve and publish",
-                    prompt: "What source evidence did you check?",
-                    primary: true,
-                  },
-                ]}
-                onDecide={(key, note) => decide(listing, key, note)}
-              />
-            </article>
+      <div className="operator-layout">
+        <nav className="portal-section-nav" aria-label="Operator sections">
+          <p className="portal-nav-label">Review</p>
+          {sectionLinks.slice(0, 3).map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              aria-current={activeSection === section.id ? "page" : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                showSection(section.id);
+              }}
+            >
+              <span>{section.label}</span>
+              <strong aria-label={`${section.count} pending`}>
+                {section.count}
+              </strong>
+            </a>
           ))}
-        </div>
-      </section>
-      <section className="portal-panel" id="experience-review">
-        <h2>Experiences awaiting moderation</h2>
-        <div className="portal-list">
-          {reviews.length === 0 && <p>No pending experiences.</p>}
-          {reviews.map((review) => (
-            <article key={review.id} className="portal-item portal-review">
-              <div>
-                <span className="status-chip">pending</span>
-                <h3>{review.role}</h3>
-                <p>Season {review.season_year}</p>
-                {review.text && <p>{review.text}</p>}
-              </div>
-              <DecisionActions
-                decisions={[
-                  { key: "reject", label: "Reject", prompt: reasonPrompt },
-                  {
-                    key: "approve",
-                    label: "Approve",
-                    prompt: reasonPrompt,
-                    primary: true,
-                  },
-                ]}
-                onDecide={(key, note) => moderate("reviews", review, key, note)}
-              />
-            </article>
+          <p className="portal-nav-label">Directory</p>
+          {sectionLinks.slice(3).map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              aria-current={activeSection === section.id ? "page" : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                showSection(section.id);
+              }}
+            >
+              <span>{section.label}</span>
+            </a>
           ))}
-        </div>
-        {reviewCursor && (
-          <button
-            type="button"
-            className="button-secondary portal-load-more"
-            onClick={() => void loadMoreQueue("reviews", reviewCursor)}
-          >
-            Load more experiences
-          </button>
-        )}
-      </section>
-      <section className="portal-panel" id="issue-reports">
-        <h2>Issue reports</h2>
-        <div className="portal-list">
-          {reports.length === 0 && <p>No pending reports.</p>}
-          {reports.map((report) => (
-            <article key={report.id} className="portal-item portal-review">
-              <div>
-                <span className="status-chip">{report.item_type}</span>
-                <h3>{report.reason.replaceAll("_", " ")}</h3>
-                <p>Item {report.item_id}</p>
-                {report.explanation && <p>{report.explanation}</p>}
-              </div>
-              <DecisionActions
-                decisions={[
-                  { key: "dismiss", label: "Dismiss", prompt: reasonPrompt },
-                  {
-                    key: "resolve",
-                    label: "Resolve",
-                    prompt: reasonPrompt,
-                    primary: true,
-                  },
-                ]}
-                onDecide={(key, note) => moderate("reports", report, key, note)}
-              />
-            </article>
-          ))}
-        </div>
-        {reportCursor && (
-          <button
-            type="button"
-            className="button-secondary portal-load-more"
-            onClick={() => void loadMoreQueue("reports", reportCursor)}
-          >
-            Load more reports
-          </button>
-        )}
-      </section>
-      <section className="portal-panel" id="employers">
-        <h2>Employers</h2>
-        <p>
-          Providers choose the US employer for each offer from this list. Add
-          the legal name and the employer&apos;s own website, then record the
-          identity check.
-        </p>
-        <form
-          className="portal-form portal-form-grid"
-          onSubmit={createEmployer}
+        </nav>
+        <div
+          className="operator-workspace"
+          id="operator-workspace"
+          tabIndex={-1}
         >
-          <label>
-            Legal name
-            <input name="legal_name" required maxLength={160} />
-          </label>
-          <label>
-            Official website
-            <input
-              name="official_website_url"
-              type="url"
-              placeholder="https://"
-              required
-            />
-          </label>
-          <div className="portal-actions portal-span">
-            <button type="submit">Add employer</button>
-          </div>
-        </form>
-        <div className="portal-list">
-          {employers.length === 0 && <p>No employers yet.</p>}
-          {employers.map((employer) => (
-            <article key={employer.id} className="portal-item portal-employer">
-              {editingEmployer === employer.id ? (
-                <EmployerEditor
-                  employer={employer}
-                  onSave={saveEmployer}
-                  onCancel={() => setEditingEmployer(null)}
-                />
-              ) : (
-                <>
-                  <div>
-                    <span
-                      className="status-chip"
-                      data-identity={employer.identity_status}
-                    >
-                      {identityLabels[employer.identity_status]}
-                    </span>
-                    <h3>{employer.legal_name}</h3>
-                    <p className="portal-url">
-                      {employer.official_website_url}
-                    </p>
-                  </div>
-                  <div className="portal-actions">
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      aria-label={`Edit ${employer.legal_name}`}
-                      onClick={() => setEditingEmployer(employer.id)}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-      <section className="portal-panel" id="companies">
-        <h2>Companies</h2>
-        <p>
-          Create the company profile first. A private access key is generated
-          automatically so the company can manage its offers in any browser.
-        </p>
-        {issuedKey && (
-          <div
-            className="portal-key"
-            role="region"
-            aria-label="New company access key"
-            tabIndex={-1}
-            ref={keyPanelRef}
-          >
-            <div>
-              <strong>Access key for {issuedKey.organizationName}</strong>
-              <p>Copy it now. The full key will not be shown again.</p>
-            </div>
-            <code>{issuedKey.accessKey}</code>
-            <div className="portal-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(issuedKey.accessKey).then(
-                    () => setKeyCopyStatus("Copied"),
-                    () =>
-                      setError(
-                        "Could not copy. Select the key and copy it manually.",
-                      ),
-                  );
-                }}
-              >
-                {keyCopyStatus || "Copy key"}
-              </button>
-              <span className="portal-hint" aria-live="polite">
-                {keyCopyStatus && "Access key copied."}
-              </span>
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={() => setIssuedKey(null)}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        )}
-        <form
-          className="portal-form portal-form-grid"
-          onSubmit={createOrganization}
-        >
-          <label>
-            Company name
-            <input name="name" required maxLength={160} />
-          </label>
-          <label>
-            Company website
-            <input
-              name="website_url"
-              type="url"
-              placeholder="https://"
-              required
-            />
-          </label>
-          <label className="portal-span">
-            Business address
-            <textarea name="address" required maxLength={300} rows={2} />
-          </label>
-          <div className="portal-actions portal-span">
-            <button type="submit">Create company and access key</button>
-          </div>
-        </form>
-        <div className="portal-list">
-          {organizations.length === 0 && <p>No companies yet.</p>}
-          {organizations.map((organization) => (
-            <article key={organization.id} className="portal-item">
-              {editingOrganization === organization.id ? (
-                <form
-                  className="portal-form portal-form-grid portal-span"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void saveOrganization(
-                      organization,
-                      new FormData(event.currentTarget),
-                    );
-                  }}
-                >
-                  <label>
-                    Company name
-                    <input
-                      name="name"
-                      defaultValue={organization.name}
-                      required
-                      maxLength={160}
-                    />
-                  </label>
-                  <label>
-                    Company website
-                    <input
-                      name="website_url"
-                      type="url"
-                      defaultValue={organization.website_url || ""}
-                      required
-                    />
-                  </label>
-                  <label className="portal-span">
-                    Business address
-                    <textarea
-                      name="address"
-                      defaultValue={organization.address || ""}
-                      required
-                      maxLength={300}
-                      rows={2}
-                    />
-                  </label>
-                  <div className="portal-actions portal-span">
-                    <button type="submit">Save company</button>
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => setEditingOrganization(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  <div>
-                    <span className="status-chip">{organization.status}</span>
-                    <h3>{organization.name}</h3>
-                    <p>{organization.address || "Business address needed"}</p>
-                    {organization.website_url ? (
+          {activeSection === "offer-review" && (
+            <section className="portal-panel" id="offer-review">
+              <h2>Offers awaiting review</h2>
+              <p>
+                Check the employer-controlled source and every field before
+                publishing.
+              </p>
+              <div className="portal-list">
+                {submissions.length === 0 && (
+                  <p className="portal-empty">No pending offers.</p>
+                )}
+                {submissions.map((listing) => (
+                  <article
+                    key={listing.id}
+                    className="portal-item portal-review"
+                  >
+                    <div>
+                      <span className="status-chip">pending</span>
+                      <h3>{listing.role}</h3>
+                      <p>
+                        {employerName(listing.employer_id)} · {listing.city},{" "}
+                        {listing.state} · Season {listing.season_year}
+                      </p>
                       <a
-                        href={organization.website_url}
+                        href={listing.official_source_url}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        {organization.website_url}
+                        Check official source
                       </a>
+                    </div>
+                    <DecisionActions
+                      decisions={[
+                        {
+                          key: "changes",
+                          label: "Request changes",
+                          prompt: "What must the provider change?",
+                        },
+                        {
+                          key: "approve",
+                          label: "Approve and publish",
+                          prompt: "What source evidence did you check?",
+                          primary: true,
+                        },
+                      ]}
+                      onDecide={(key, note) => decide(listing, key, note)}
+                    />
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {activeSection === "experience-review" && (
+            <section className="portal-panel" id="experience-review">
+              <h2>Experiences awaiting moderation</h2>
+              <div className="portal-list">
+                {reviews.length === 0 && (
+                  <p className="portal-empty">No pending experiences.</p>
+                )}
+                {reviews.map((review) => (
+                  <article
+                    key={review.id}
+                    className="portal-item portal-review"
+                  >
+                    <div>
+                      <span className="status-chip">pending</span>
+                      <h3>{review.role}</h3>
+                      <p>Season {review.season_year}</p>
+                      {review.text && <p>{review.text}</p>}
+                    </div>
+                    <DecisionActions
+                      decisions={[
+                        {
+                          key: "reject",
+                          label: "Reject",
+                          prompt: reasonPrompt,
+                        },
+                        {
+                          key: "approve",
+                          label: "Approve",
+                          prompt: reasonPrompt,
+                          primary: true,
+                        },
+                      ]}
+                      onDecide={(key, note) =>
+                        moderate("reviews", review, key, note)
+                      }
+                    />
+                  </article>
+                ))}
+              </div>
+              {reviewCursor && (
+                <button
+                  type="button"
+                  className="button-secondary portal-load-more"
+                  onClick={() => void loadMoreQueue("reviews", reviewCursor)}
+                >
+                  Load more experiences
+                </button>
+              )}
+            </section>
+          )}
+          {activeSection === "issue-reports" && (
+            <section className="portal-panel" id="issue-reports">
+              <h2>Issue reports</h2>
+              <div className="portal-list">
+                {reports.length === 0 && (
+                  <p className="portal-empty">No pending reports.</p>
+                )}
+                {reports.map((report) => (
+                  <article
+                    key={report.id}
+                    className="portal-item portal-review"
+                  >
+                    <div>
+                      <span className="status-chip">{report.item_type}</span>
+                      <h3>{report.reason.replaceAll("_", " ")}</h3>
+                      <p>Item {report.item_id}</p>
+                      {report.explanation && <p>{report.explanation}</p>}
+                    </div>
+                    <DecisionActions
+                      decisions={[
+                        {
+                          key: "dismiss",
+                          label: "Dismiss",
+                          prompt: reasonPrompt,
+                        },
+                        {
+                          key: "resolve",
+                          label: "Resolve",
+                          prompt: reasonPrompt,
+                          primary: true,
+                        },
+                      ]}
+                      onDecide={(key, note) =>
+                        moderate("reports", report, key, note)
+                      }
+                    />
+                  </article>
+                ))}
+              </div>
+              {reportCursor && (
+                <button
+                  type="button"
+                  className="button-secondary portal-load-more"
+                  onClick={() => void loadMoreQueue("reports", reportCursor)}
+                >
+                  Load more reports
+                </button>
+              )}
+            </section>
+          )}
+          {activeSection === "employers" && (
+            <section className="portal-panel" id="employers">
+              <h2>Employers</h2>
+              <p>
+                Providers choose the US employer for each offer from this list.
+                Add the legal name and the employer&apos;s own website, then
+                record the identity check.
+              </p>
+              <form
+                className="portal-form portal-form-grid"
+                onSubmit={createEmployer}
+              >
+                <label>
+                  Legal name
+                  <input name="legal_name" required maxLength={160} />
+                </label>
+                <label>
+                  Official website
+                  <input
+                    name="official_website_url"
+                    type="url"
+                    placeholder="https://"
+                    required
+                  />
+                </label>
+                <div className="portal-actions portal-span">
+                  <button type="submit">Add employer</button>
+                </div>
+              </form>
+              <div className="portal-list">
+                {employers.length === 0 && <p>No employers yet.</p>}
+                {employers.map((employer) => (
+                  <article
+                    key={employer.id}
+                    className="portal-item portal-employer"
+                  >
+                    {editingEmployer === employer.id ? (
+                      <EmployerEditor
+                        employer={employer}
+                        onSave={saveEmployer}
+                        onCancel={() => setEditingEmployer(null)}
+                      />
                     ) : (
-                      <p className="form-error">Company website needed</p>
+                      <>
+                        <div>
+                          <span
+                            className="status-chip"
+                            data-identity={employer.identity_status}
+                          >
+                            {identityLabels[employer.identity_status]}
+                          </span>
+                          <h3>{employer.legal_name}</h3>
+                          <p className="portal-url">
+                            {employer.official_website_url}
+                          </p>
+                        </div>
+                        <div className="portal-actions">
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            aria-label={`Edit ${employer.legal_name}`}
+                            onClick={() => setEditingEmployer(employer.id)}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </>
                     )}
-                    <p className="portal-hint">
-                      {organization.access_key_hint
-                        ? `Access key active · ends in ${organization.access_key_hint}`
-                        : "No access key issued"}
-                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {activeSection === "companies" && (
+            <section className="portal-panel" id="companies">
+              <h2>Companies</h2>
+              <p>
+                Create the company profile first. A private access key is
+                generated automatically so the company can manage its offers in
+                any browser.
+              </p>
+              {issuedKey && (
+                <div
+                  className="portal-key"
+                  role="region"
+                  aria-label="New company access key"
+                  tabIndex={-1}
+                  ref={keyPanelRef}
+                >
+                  <div>
+                    <strong>Access key for {issuedKey.organizationName}</strong>
+                    <p>Copy it now. The full key will not be shown again.</p>
                   </div>
+                  <code>{issuedKey.accessKey}</code>
                   <div className="portal-actions">
                     <button
                       type="button"
-                      className="button-secondary"
-                      onClick={() => setEditingOrganization(organization.id)}
+                      onClick={() => {
+                        void navigator.clipboard
+                          .writeText(issuedKey.accessKey)
+                          .then(
+                            () => setKeyCopyStatus("Copied"),
+                            () =>
+                              setError(
+                                "Could not copy. Select the key and copy it manually.",
+                              ),
+                          );
+                      }}
                     >
-                      Edit profile
+                      {keyCopyStatus || "Copy key"}
                     </button>
-                    {confirmingKeyId === organization.id ? (
-                      <>
-                        <button
-                          type="button"
-                          className="button-danger"
-                          onClick={() => void rotateAccessKey(organization)}
-                        >
-                          Confirm replacement
-                        </button>
-                        <button
-                          type="button"
-                          className="button-secondary"
-                          onClick={() => setConfirmingKeyId(null)}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className="button-secondary"
-                        onClick={() => setConfirmingKeyId(organization.id)}
-                      >
-                        {organization.access_key_hint
-                          ? "Replace access key"
-                          : "Create access key"}
-                      </button>
-                    )}
-                    {organization.status === "active" &&
-                    confirmingStatusId === organization.id ? (
-                      <>
-                        <button
-                          type="button"
-                          className="button-danger"
-                          onClick={() =>
-                            void changeOrganizationStatus(organization)
-                          }
-                        >
-                          Confirm suspension
-                        </button>
-                        <button
-                          type="button"
-                          className="button-secondary"
-                          onClick={() => setConfirmingStatusId(null)}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className={
-                          organization.status === "active"
-                            ? "button-danger"
-                            : "button-secondary"
-                        }
-                        onClick={() =>
-                          organization.status === "active"
-                            ? setConfirmingStatusId(organization.id)
-                            : void changeOrganizationStatus(organization)
-                        }
-                      >
-                        {organization.status === "active"
-                          ? "Suspend access"
-                          : "Restore access"}
-                      </button>
-                    )}
+                    <span className="portal-hint" aria-live="polite">
+                      {keyCopyStatus && "Access key copied."}
+                    </span>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setIssuedKey(null)}
+                    >
+                      Done
+                    </button>
                   </div>
-                </>
+                </div>
               )}
-            </article>
-          ))}
+              <form
+                className="portal-form portal-form-grid"
+                onSubmit={createOrganization}
+              >
+                <label>
+                  Company name
+                  <input name="name" required maxLength={160} />
+                </label>
+                <label>
+                  Company website
+                  <input
+                    name="website_url"
+                    type="url"
+                    placeholder="https://"
+                    required
+                  />
+                </label>
+                <label className="portal-span">
+                  Business address
+                  <textarea name="address" required maxLength={300} rows={2} />
+                </label>
+                <div className="portal-actions portal-span">
+                  <button type="submit">Create company and access key</button>
+                </div>
+              </form>
+              <div className="portal-list">
+                {organizations.length === 0 && <p>No companies yet.</p>}
+                {organizations.map((organization) => (
+                  <article key={organization.id} className="portal-item">
+                    {editingOrganization === organization.id ? (
+                      <form
+                        className="portal-form portal-form-grid portal-span"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void saveOrganization(
+                            organization,
+                            new FormData(event.currentTarget),
+                          );
+                        }}
+                      >
+                        <label>
+                          Company name
+                          <input
+                            name="name"
+                            defaultValue={organization.name}
+                            required
+                            maxLength={160}
+                          />
+                        </label>
+                        <label>
+                          Company website
+                          <input
+                            name="website_url"
+                            type="url"
+                            defaultValue={organization.website_url || ""}
+                            required
+                          />
+                        </label>
+                        <label className="portal-span">
+                          Business address
+                          <textarea
+                            name="address"
+                            defaultValue={organization.address || ""}
+                            required
+                            maxLength={300}
+                            rows={2}
+                          />
+                        </label>
+                        <div className="portal-actions portal-span">
+                          <button type="submit">Save company</button>
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            onClick={() => setEditingOrganization(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="status-chip">
+                            {organization.status}
+                          </span>
+                          <h3>{organization.name}</h3>
+                          <p>
+                            {organization.address || "Business address needed"}
+                          </p>
+                          {organization.website_url ? (
+                            <a
+                              href={organization.website_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {organization.website_url}
+                            </a>
+                          ) : (
+                            <p className="form-error">Company website needed</p>
+                          )}
+                          <p className="portal-hint">
+                            {organization.access_key_hint
+                              ? `Access key active · ends in ${organization.access_key_hint}`
+                              : "No access key issued"}
+                          </p>
+                        </div>
+                        <div className="portal-actions">
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            onClick={() =>
+                              setEditingOrganization(organization.id)
+                            }
+                          >
+                            Edit profile
+                          </button>
+                          {confirmingKeyId === organization.id ? (
+                            <>
+                              <button
+                                type="button"
+                                className="button-danger"
+                                onClick={() =>
+                                  void rotateAccessKey(organization)
+                                }
+                              >
+                                Confirm replacement
+                              </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setConfirmingKeyId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              onClick={() =>
+                                setConfirmingKeyId(organization.id)
+                              }
+                            >
+                              {organization.access_key_hint
+                                ? "Replace access key"
+                                : "Create access key"}
+                            </button>
+                          )}
+                          {organization.status === "active" &&
+                          confirmingStatusId === organization.id ? (
+                            <>
+                              <button
+                                type="button"
+                                className="button-danger"
+                                onClick={() =>
+                                  void changeOrganizationStatus(organization)
+                                }
+                              >
+                                Confirm suspension
+                              </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setConfirmingStatusId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className={
+                                organization.status === "active"
+                                  ? "button-danger"
+                                  : "button-secondary"
+                              }
+                              onClick={() =>
+                                organization.status === "active"
+                                  ? setConfirmingStatusId(organization.id)
+                                  : void changeOrganizationStatus(organization)
+                              }
+                            >
+                              {organization.status === "active"
+                                ? "Suspend access"
+                                : "Restore access"}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }

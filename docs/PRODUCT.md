@@ -45,7 +45,7 @@ Anyone may report a published review or previously published listing using an it
 
 ## Language and interface states
 
-The provider workspace groups offer entry into basics, source/contact, dates/pay, and housing/transport. It keeps one unsaved offer draft in the current browser tab so a session expiry or reload does not erase entered work. The operator console starts with section navigation and queue counts; moderation queues expose pagination instead of hiding records beyond the first page.
+The provider workspace groups offer entry into basics, source/contact, dates/pay, and housing/transport. It keeps one unsaved offer draft in the current browser tab so a session expiry or reload does not erase entered work. The operator console uses the available desktop width and starts with persistent section navigation and queue counts. It shows one operational section at a time, clearly marks the active section, and provides an explicit refresh action. On narrow screens the section navigation becomes a horizontal strip. Moderation queues expose pagination instead of hiding records beyond the first page.
 
 All platform UI text, validation, status labels, and screen-reader labels is available in Russian and Kazakh; English is also supported. Never silently invent a translation of employer-provided facts. Show source language when recorded, otherwise state that it is unknown; identify any reviewed translation. Language selection works in web and Telegram without requiring Telegram identity.
 
