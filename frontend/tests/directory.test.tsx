@@ -83,6 +83,37 @@ describe("public search and rendering", () => {
     expect(html).not.toContain("rating");
   });
 
+  it("summarizes each experience as answer chips with a full list sheet", () => {
+    const html = renderToStaticMarkup(
+      <Reviews
+        locale="en"
+        items={[
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            season_year: 2027,
+            role: "Front desk",
+            submitted_at: "2026-09-27T10:00:00Z",
+            pay_match: "yes",
+            pay_clarity: "unclear",
+            hours_match: "no",
+            housing_match: "unknown",
+            transport_match: "not_applicable",
+            text: null,
+            label: "self-reported experience",
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('data-state="yes" title="as listed"');
+    expect(html).toContain('data-state="no" title="unclear"');
+    expect(html).toContain('data-state="no" title="not as listed"');
+    expect(html).toContain('data-state="unknown" title="not sure"');
+    expect(html).toContain('data-state="not_applicable"');
+    expect(html).toContain("See all");
+    expect(html).toContain("Employment is not verified");
+    expect(html).not.toMatch(/out of|\d+ (experiences|ratings)/);
+  });
+
   it("lets one report sheet target the vacancy or a listed experience", () => {
     const html = renderToStaticMarkup(
       <ReportForm

@@ -3,6 +3,7 @@ import type { MouseEventHandler } from "react";
 import type { Copy, Locale } from "@/lib/copy";
 import { fill, getCopy, intlLocale, localePath } from "@/lib/copy";
 import type { Listing, Review } from "@/lib/directory";
+import { AllReviews } from "@/components/all-reviews";
 import { ContactAction } from "@/components/contact-sheet";
 import { ExternalIcon } from "@/components/icons";
 import { LinkPending } from "@/components/link-pending";
@@ -258,14 +259,124 @@ export function ListingCard({
 
 export { ContactAction };
 
+type CheckState = "yes" | "no" | "unknown" | "not_applicable";
+
 function reviewAnswer(value: string, t: Copy): string {
   return value === "yes"
-    ? t.matched
+    ? t.answerAsListed
     : value === "no"
-      ? t.notMatched
+      ? t.answerNotAsListed
       : value === "not_applicable"
-        ? t.notApplicable
-        : t.unknown;
+        ? t.answerNoMatter
+        : t.answerNotSure;
+}
+
+function CheckMark({ state }: { state: CheckState }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {state === "yes" ? (
+        <path d="m4 8.5 2.6 2.6L12 5.5" />
+      ) : state === "no" ? (
+        <path d="m5 5 6 6m0-6-6 6" />
+      ) : state === "not_applicable" ? (
+        <path d="M4.5 8h7" />
+      ) : (
+        <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+      )}
+    </svg>
+  );
+}
+
+function ReviewCheck({
+  label,
+  state,
+  answer,
+}: {
+  label: string;
+  state: CheckState;
+  answer: string;
+}) {
+  return (
+    <li className="review-check" data-state={state} title={answer}>
+      <CheckMark state={state} />
+      {label}
+      <span className="sr-only">: {answer}</span>
+    </li>
+  );
+}
+
+function ReviewCard({
+  item,
+  locale,
+  full = false,
+}: {
+  item: Review;
+  locale: Locale;
+  full?: boolean;
+}) {
+  const t = getCopy(locale);
+  const clarity: CheckState =
+    item.pay_clarity === "clear"
+      ? "yes"
+      : item.pay_clarity === "unclear"
+        ? "no"
+        : "unknown";
+  return (
+    <article className="review" data-full={full || undefined}>
+      <div className="review-head">
+        <h3>{plainText(item.role)}</h3>
+        <time dateTime={item.submitted_at.slice(0, 10)}>
+          {formattedDate(item.submitted_at, locale, t)}
+        </time>
+      </div>
+      <p className="review-season">
+        {fill(t.seasonYear, { year: item.season_year })}
+      </p>
+      <ul className="review-checks">
+        <ReviewCheck
+          label={t.payShort}
+          state={item.pay_match}
+          answer={reviewAnswer(item.pay_match, t)}
+        />
+        <ReviewCheck
+          label={t.payTermsShort}
+          state={clarity}
+          answer={
+            clarity === "yes"
+              ? t.answerClear
+              : clarity === "no"
+                ? t.answerUnclear
+                : t.answerNotSure
+          }
+        />
+        <ReviewCheck
+          label={t.hoursReview}
+          state={item.hours_match}
+          answer={reviewAnswer(item.hours_match, t)}
+        />
+        <ReviewCheck
+          label={t.housingReview}
+          state={item.housing_match}
+          answer={reviewAnswer(item.housing_match, t)}
+        />
+        <ReviewCheck
+          label={t.transportReview}
+          state={item.transport_match}
+          answer={reviewAnswer(item.transport_match, t)}
+        />
+      </ul>
+      {item.text && <p className="review-text">{plainText(item.text)}</p>}
+      <p className="review-note">{t.selfReported}</p>
+    </article>
+  );
 }
 
 export function Reviews({
@@ -280,51 +391,25 @@ export function Reviews({
   const t = getCopy(locale);
   return (
     <section className="reviews" aria-labelledby="reviews-heading">
-      <h2 id="reviews-heading">{t.reviews}</h2>
+      <div className="reviews-head">
+        <h2 id="reviews-heading">{t.reviews}</h2>
+        {items.length > 0 && (
+          <AllReviews locale={locale}>
+            {items.map((item) => (
+              <ReviewCard key={item.id} item={item} locale={locale} full />
+            ))}
+          </AllReviews>
+        )}
+      </div>
       {items.length > 0 && (
-        <div className="review-grid">
+        <div
+          className="review-scroller"
+          role="region"
+          aria-labelledby="reviews-heading"
+          tabIndex={0}
+        >
           {items.map((item) => (
-            <article className="review" key={item.id}>
-              <p className="review-meta">
-                <span>{fill(t.seasonYear, { year: item.season_year })}</span>
-                <time dateTime={item.submitted_at.slice(0, 10)}>
-                  {formattedDate(item.submitted_at, locale, t)}
-                </time>
-              </p>
-              <p className="review-note">{t.selfReported}</p>
-              <p>
-                {t.roleReview}: {plainText(item.role)}
-              </p>
-              <dl>
-                <div>
-                  <dt>{t.payClarity}</dt>
-                  <dd>
-                    {item.pay_clarity === "clear"
-                      ? t.payClear
-                      : item.pay_clarity === "unclear"
-                        ? t.payUnclear
-                        : t.unknownReview}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t.payReview}</dt>
-                  <dd>{reviewAnswer(item.pay_match, t)}</dd>
-                </div>
-                <div>
-                  <dt>{t.hoursReview}</dt>
-                  <dd>{reviewAnswer(item.hours_match, t)}</dd>
-                </div>
-                <div>
-                  <dt>{t.housingReview}</dt>
-                  <dd>{reviewAnswer(item.housing_match, t)}</dd>
-                </div>
-                <div>
-                  <dt>{t.transportReview}</dt>
-                  <dd>{reviewAnswer(item.transport_match, t)}</dd>
-                </div>
-              </dl>
-              {item.text && <p>{plainText(item.text)}</p>}
-            </article>
+            <ReviewCard key={item.id} item={item} locale={locale} />
           ))}
         </div>
       )}

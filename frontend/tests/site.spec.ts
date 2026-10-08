@@ -808,7 +808,7 @@ test("student can submit a pending experience and report an issue", async ({
     .fill("Front desk");
   await review
     .getByRole("group", { name: "Условия оплаты были понятны?" })
-    .getByText("Да, понятны")
+    .getByText("Да", { exact: true })
     .click();
   await review.getByRole("button", { name: "Далее" }).click();
   await expect(review.getByText("Шаг 2 из 3")).toBeVisible();
@@ -819,7 +819,7 @@ test("student can submit a pending experience and report an issue", async ({
   await review.getByRole("button", { name: "Далее" }).click();
   await review
     .getByRole("group", { name: "Часы" })
-    .getByText("Совпало с описанием")
+    .getByText("Как в вакансии", { exact: true })
     .click();
   await review.getByRole("button", { name: "Далее" }).click();
   await expect(review.getByText("Шаг 3 из 3")).toBeVisible();
