@@ -47,6 +47,7 @@ export function AppShell({
   const searchParams = useSearchParams();
   const locale = pathLocale(pathname);
   const isPortal = /^\/(admin|manage|portal)(?:\/|$)/.test(pathname);
+  const isCompanyLogin = pathname === "/portal/login";
   const t = getCopy(locale);
   const targetLocale = nextLocale[locale];
   const query = searchParams.toString();
@@ -72,55 +73,71 @@ export function AppShell({
           >
             <span className="brand-initial">i</span>ter
           </Link>
-          {!isPortal && (
-            <Link
-              className="language-switch"
-              href={languageHref}
-              hrefLang={targetLocale}
-              scroll={false}
-              aria-label={fill(t.switchLanguage, {
-                language: languageNames[targetLocale],
-              })}
-            >
-              <span className="language-code">{languageCodes[locale]}</span>
-              <LinkPending />
-            </Link>
+          {(!isPortal || isCompanyLogin) && (
+            <div className="header-actions">
+              {isCompanyLogin ? (
+                <Link className="company-access" href={localePath(locale)}>
+                  For employees
+                </Link>
+              ) : (
+                <Link className="company-access" href="/portal/login">
+                  {t.manageOffers}
+                </Link>
+              )}
+            </div>
           )}
         </div>
       </header>
       <main id="main">{children}</main>
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <div className="footer-bottom">
-            <span>
-              © {year} {t.brand}
-            </span>
-            <Link className="footer-manage" href="/portal/login">
-              {t.manageOffers}
-            </Link>
-            <a
-              className="footer-source"
-              href="https://github.com/anxchywl/iter"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={t.sourceCode}
-              title={t.sourceCode}
-            >
-              <GitHubIcon />
-            </a>
+      {!isCompanyLogin && (
+        <footer className="site-footer">
+          <div className="footer-inner">
+            <div className="footer-bottom">
+              <span>
+                © {year} {t.brand}
+              </span>
+              {telegram && (
+                <a
+                  className="telegram-launch"
+                  href={telegram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t.telegram}
+                </a>
+              )}
+              <div className="footer-utilities">
+                {!isPortal && (
+                  <Link
+                    className="language-switch"
+                    href={languageHref}
+                    hrefLang={targetLocale}
+                    scroll={false}
+                    aria-label={fill(t.switchLanguage, {
+                      language: languageNames[targetLocale],
+                    })}
+                  >
+                    <span className="language-code">
+                      {languageCodes[locale]}
+                    </span>
+                    <LinkPending />
+                  </Link>
+                )}
+                <a
+                  className="footer-source"
+                  href="https://github.com/anxchywl/iter"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t.sourceCode}
+                  title={t.sourceCode}
+                >
+                  <GitHubIcon />
+                </a>
+              </div>
+            </div>
           </div>
-          {telegram && (
-            <a
-              className="telegram-launch"
-              href={telegram}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t.telegram}
-            </a>
-          )}
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

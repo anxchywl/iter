@@ -6,11 +6,13 @@ import { morph, reducedMotion } from "@/lib/motion";
 const textFields =
   'input:not([type]), input[type="text"], input[type="search"], input[type="number"], textarea';
 const phone = "(max-width: 640px)";
+type FocusModeOptions = { layout?: "morph" | "css" };
 
 // on phones, a focused text field becomes the only visible field in its scope
 export function useFocusMode(
   scope: RefObject<HTMLElement | null>,
   frame?: RefObject<HTMLElement | null>,
+  { layout = "morph" }: FocusModeOptions = {},
 ) {
   useEffect(() => {
     const root = scope.current;
@@ -35,6 +37,17 @@ export function useFocusMode(
       window.clearTimeout(timer);
       if (!field && !current) {
         delete root!.dataset.focusLeaving;
+        return;
+      }
+      if (layout === "css") {
+        delete root!.dataset.focusLeaving;
+        if (current) delete current.dataset.active;
+        if (field) {
+          root!.dataset.focus = "";
+          field.dataset.active = "";
+        } else {
+          delete root!.dataset.focus;
+        }
         return;
       }
       const target = frame?.current ?? root!;

@@ -5,6 +5,16 @@ export type TelegramWindow = {
     postEvent: (eventType: string, eventData: string) => void;
   };
   external?: { notify?: (message: string) => void };
+  webkit?: {
+    messageHandlers?: {
+      performAction?: {
+        postMessage: (message: {
+          eventName: string;
+          eventData: string;
+        }) => void;
+      };
+    };
+  };
   Telegram?: { WebApp?: { initData?: string } };
   sessionStorage?: Pick<Storage, "getItem" | "setItem">;
 };
@@ -31,7 +41,10 @@ function hasLaunchSignal(win: TelegramWindow): boolean {
 
 function hasNativeBridge(win: TelegramWindow): boolean {
   return Boolean(
-    win.TelegramWebviewProxy || win.external?.notify || win.Telegram?.WebApp,
+    win.TelegramWebviewProxy ||
+    win.external?.notify ||
+    win.webkit?.messageHandlers?.performAction ||
+    win.Telegram?.WebApp,
   );
 }
 
@@ -73,6 +86,11 @@ function postEvent(win: TelegramWindow, type: string, data: object): boolean {
   const external = win.external?.notify;
   if (external) {
     external(JSON.stringify({ eventType: type, eventData: data }));
+    return true;
+  }
+  const macOS = win.webkit?.messageHandlers?.performAction;
+  if (macOS) {
+    macOS.postMessage({ eventName: type, eventData: JSON.stringify(data) });
     return true;
   }
   if (win.parent === win || (!hasLaunchSignal(win) && !launchParams(win)))

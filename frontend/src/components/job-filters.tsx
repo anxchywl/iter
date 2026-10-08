@@ -11,7 +11,8 @@ import { FocusDone } from "@/components/focus-done";
 import { Sheet, useSheet } from "@/components/sheet";
 
 type DateKey = "start_from" | "end_by";
-type ChoiceKey = "wage_basis" | "housing_known" | "confirmed_within_days";
+type ChoiceKey =
+  "currency" | "wage_basis" | "housing_known" | "confirmed_within_days";
 type Panel = DateKey | ChoiceKey;
 
 function isDate(panel: Panel): panel is DateKey {
@@ -29,18 +30,20 @@ export function JobFilters({
   const sheet = useSheet();
   const dialog = sheet.ref;
   const tools = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(filters.q);
   const [dates, setDates] = useState<Record<DateKey, string>>({
     start_from: filters.start_from,
     end_by: filters.end_by,
   });
   const [choices, setChoices] = useState<Record<ChoiceKey, string>>({
+    currency: filters.wage_currency || "USD",
     wage_basis: filters.wage_basis || "hour",
     housing_known: filters.housing_known,
     confirmed_within_days: filters.confirmed_within_days,
   });
   const [panel, setPanel] = useState<Panel | null>(null);
-  useFocusMode(tools);
+  useFocusMode(tools, undefined, { layout: "css" });
   const activeCount = [
     filters.state,
     filters.city,
@@ -56,11 +59,17 @@ export function JobFilters({
   const labels: Record<Panel, string> = {
     start_from: t.startFrom,
     end_by: t.endBy,
+    currency: t.currency,
     wage_basis: t.payBasis,
     housing_known: t.housingKnown,
     confirmed_within_days: t.freshness,
   };
   const options: Record<ChoiceKey, [string, string][]> = {
+    currency: [
+      ["USD", "USD"],
+      ["KZT", "KZT"],
+      ["EUR", "EUR"],
+    ],
     wage_basis: [
       ["hour", t.hour],
       ["day", t.day],
@@ -191,6 +200,7 @@ export function JobFilters({
           </label>
           <input
             id="job-query"
+            ref={searchInput}
             name="q"
             type="search"
             maxLength={80}
@@ -230,8 +240,21 @@ export function JobFilters({
               />
             </>
           )}
-          <button type="submit" aria-label={t.search}>
+          <button
+            type={query ? "button" : "submit"}
+            aria-label={query ? t.clearSearch : t.search}
+            data-clearing={Boolean(query) || undefined}
+            onClick={
+              query
+                ? () => {
+                    setQuery("");
+                    searchInput.current?.focus();
+                  }
+                : undefined
+            }
+          >
             <svg
+              className="search-icon"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -242,6 +265,17 @@ export function JobFilters({
               <circle cx="10.5" cy="10.5" r="6.5" />
               <path d="m16 16 5 5" />
             </svg>
+            <svg
+              className="clear-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
           </button>
         </form>
         <button
@@ -250,7 +284,6 @@ export function JobFilters({
           aria-label={activeCount ? `${t.filters}: ${activeCount}` : t.filters}
           aria-haspopup="dialog"
           onClick={sheet.open}
-          data-focus-hide
         >
           <svg
             viewBox="0 0 24 24"
@@ -282,7 +315,12 @@ export function JobFilters({
           <input type="hidden" name="start_from" value={dates.start_from} />
           <input type="hidden" name="end_by" value={dates.end_by} />
           {(Object.keys(choices) as ChoiceKey[]).map((key) => (
-            <input key={key} type="hidden" name={key} value={choices[key]} />
+            <input
+              key={key}
+              type="hidden"
+              name={key === "currency" ? "wage_currency" : key}
+              value={choices[key]}
+            />
           ))}
           {panel && isDate(panel) && (
             <Calendar
@@ -334,15 +372,13 @@ export function JobFilters({
                 >
                   {t.clearDate}
                 </button>
-              ) : (
-                <span />
-              )}
+              ) : null}
               <button
                 type="button"
-                className="secondary-button"
+                className="panel-done"
                 onClick={() => showPanel(null)}
               >
-                {t.calendarBack}
+                {t.done}
               </button>
             </div>
           )}
@@ -388,16 +424,7 @@ export function JobFilters({
                 defaultValue={filters.min_wage}
               />
             </label>
-            <label data-field data-morph>
-              {t.currency}
-              <input
-                name="wage_currency"
-                maxLength={3}
-                pattern="[A-Z]{3}"
-                autoCapitalize="characters"
-                defaultValue={filters.wage_currency}
-              />
-            </label>
+            {pickerField("currency", choices.currency, "choice")}
             {pickerField("wage_basis", choices.wage_basis, "choice")}
             <label data-field data-morph>
               {t.minHours}

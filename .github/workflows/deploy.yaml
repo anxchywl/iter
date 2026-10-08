@@ -1,8 +1,11 @@
 name: Deploy
 
-# manual only: a run ships the revision it checks out, after CI passed on it
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,9 +17,12 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
+    env:
+      REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Check the deployment is configured
         env:
@@ -37,7 +43,6 @@ jobs:
       - name: Require a green CI run for this revision
         env:
           GH_TOKEN: ${{ github.token }}
-          REVISION: ${{ github.sha }}
         run: |
           conclusion=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=$REVISION" \
             --jq '[.workflow_runs[] | select(.name == "CI")] | first | .conclusion // "none"')
@@ -59,7 +64,6 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          REVISION: ${{ github.sha }}
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" \

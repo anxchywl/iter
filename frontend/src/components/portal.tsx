@@ -272,12 +272,7 @@ export function PortalLogin() {
 
   return (
     <section className="portal-login" aria-labelledby="portal-login-title">
-      <p className="portal-kicker">Company workspace</p>
-      <h1 id="portal-login-title">Manage your job offers</h1>
-      <p>
-        Enter the private access key issued to your company. You do not need a
-        Telegram account.
-      </p>
+      <h1 id="portal-login-title">Company sign in</h1>
       <form className="portal-form" onSubmit={submit}>
         <label>
           Company access key
@@ -295,12 +290,16 @@ export function PortalLogin() {
           </p>
         )}
         <button type="submit" disabled={pending}>
-          {pending ? "Signing in…" : "Continue"}
+          {pending ? "Signing in…" : "Sign in"}
         </button>
       </form>
       <p className="portal-hint">
-        Keep this key private. Contact the iter team if it is lost or exposed.
+        Use the access key issued to your company. Keep this key private. Ask
+        the Iter team to issue or replace a key.
       </p>
+      <a className="portal-contact" href="mailto:anxchywl@gmail.com">
+        anxchywl@gmail.com
+      </a>
     </section>
   );
 }

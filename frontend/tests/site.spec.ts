@@ -2,20 +2,36 @@ import { expect, test } from "@playwright/test";
 
 const id = "11111111-1111-4111-8111-111111111111";
 
+test("filter sheet opens with the nonce-based script policy", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const response = await page.goto("/?q=");
+  const policy = response?.headers()["content-security-policy"];
+  expect(policy).toMatch(/script-src[^;]*'nonce-[A-Za-z0-9+/]+=*'/);
+  await expect(page.getByRole("button", { name: "Filters" })).toBeVisible();
+  await page.getByRole("button", { name: "Filters" }).click();
+  await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
+});
+
 test("mobile localized search and no-results state fit without overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/ru");
-  await expect(
-    page.getByRole("heading", { name: "Вакансии", exact: true, level: 1 }),
-  ).toBeVisible();
+  await expect(page.locator("#results-heading")).toHaveClass("sr-only");
   await expect(
     page.getByText("Локальные тестовые данные, не действующие вакансии"),
   ).toBeVisible();
   await expect(
+    page.locator(".site-header").getByRole("link", { name: "Работодателям" }),
+  ).toBeVisible();
+  await expect(
     page.locator(".listing-link").filter({ hasText: "Front desk assistant" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("searchbox", { name: "Поиск по вакансии или работодателю" }),
+  ).toHaveAttribute("placeholder", "Поиск");
   await expect(page.locator(".pagination")).toHaveCount(0);
   const finalCard = await page
     .locator(".listing-card:last-child")
@@ -30,11 +46,82 @@ test("mobile localized search and no-results state fit without overflow", async 
   await page.getByLabel("Город").fill("Missing City");
   await page.getByLabel("Город").press("Enter");
   await expect(
-    page.getByRole("heading", { name: "По этим фильтрам вакансий нет" }),
+    page.getByRole("heading", { name: "Нет вакансий" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Сбросить фильтры" }),
+  ).toHaveCount(0);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
+});
+
+test("mobile search expands and hides filters while focused", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 812 });
+  await page.goto("/ru");
+  const search = page.getByRole("searchbox", {
+    name: "Поиск по вакансии или работодателю",
+  });
+  const filter = page.getByRole("button", { name: "Фильтры" });
+  const before = await page.locator(".job-search").boundingBox();
+  const rowBefore = await page.locator(".job-tools").boundingBox();
+  expect(before).not.toBeNull();
+  expect(rowBefore).not.toBeNull();
+  await search.click();
+  await page.waitForTimeout(40);
+  const inFlight = await page.evaluate(() => {
+    const row = document.querySelector(".job-tools")!.getBoundingClientRect();
+    const input = document
+      .querySelector(".job-search")!
+      .getBoundingClientRect();
+    const button = document
+      .querySelector(".filter-trigger")!
+      .getBoundingClientRect();
+    return { rowHeight: row.height, inputY: input.y, buttonY: button.y };
+  });
+  expect(inFlight.rowHeight).toBe(rowBefore!.height);
+  expect(inFlight.buttonY).toBe(inFlight.inputY);
+  const transitions = await page
+    .locator(".job-tools")
+    .evaluate((tools) =>
+      tools
+        .getAnimations()
+        .map((animation) =>
+          animation instanceof CSSTransition
+            ? animation.transitionProperty
+            : "",
+        ),
+    );
+  expect(transitions).toContain("grid-template-columns");
+  expect(transitions).not.toContain("height");
+  const filterTransitions = await page
+    .locator(".filter-trigger")
+    .evaluate((button) =>
+      button
+        .getAnimations()
+        .map((animation) =>
+          animation instanceof CSSTransition
+            ? animation.transitionProperty
+            : "",
+        ),
+    );
+  expect(filterTransitions).toContain("opacity");
+  expect(filterTransitions).toContain("transform");
+  await expect(filter).toBeHidden();
+  await page.waitForTimeout(220);
+  const focused = await page.locator(".job-search").boundingBox();
+  const focusedRow = await page.locator(".job-tools").boundingBox();
+  const focusedFilter = await page.locator(".filter-trigger").boundingBox();
+  expect(focused).not.toBeNull();
+  expect(focusedRow).not.toBeNull();
+  expect(focusedFilter).not.toBeNull();
+  expect(focusedRow!.height).toBe(rowBefore!.height);
+  expect(focusedFilter!.y).toBe(focused!.y);
+  expect(focused!.width).toBeGreaterThan(before!.width + 30);
+  await page.locator(".content-wrap").click({ position: { x: 4, y: 4 } });
+  await expect(filter).toBeVisible();
 });
 
 test("job finder keeps search, filters, and detail in one flow", async ({
@@ -50,6 +137,8 @@ test("job finder keeps search, filters, and detail in one flow", async ({
   await page
     .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
     .fill("Front desk");
+  await page.locator(".content-wrap").click({ position: { x: 4, y: 4 } });
+  await expect(page.getByRole("button", { name: "Фильтры" })).toBeVisible();
   await page.getByRole("button", { name: "Фильтры" }).click();
   await filters.getByLabel("Город").fill("Albany");
   await filters.getByLabel("Город").press("Enter");
@@ -60,11 +149,13 @@ test("job finder keeps search, filters, and detail in one flow", async ({
     .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
     .fill("assistant");
   await page
-    .getByRole("button", { name: "Поиск по вакансии или работодателю" })
-    .click();
+    .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
+    .press("Enter");
   await expect(page).toHaveURL(/city=Albany/);
   expect(new URL(page.url()).searchParams.get("q")).toBe("assistant");
   const language = page.locator(".language-switch");
+  await expect(page.locator(".site-header .language-switch")).toHaveCount(0);
+  await expect(page.locator(".footer-bottom .language-switch")).toBeVisible();
   await language.evaluate((link) => {
     link.setAttribute("data-instance", "persistent");
   });
@@ -115,7 +206,8 @@ test("job finder keeps search, filters, and detail in one flow", async ({
   ).toHaveAttribute("href", "https://github.com/anxchywl/iter");
   expect(
     await page
-      .getByRole("heading", { level: 1 })
+      .locator(".listing-card h3")
+      .first()
       .evaluate((heading) => getComputedStyle(heading).textWrap),
   ).toBe("balance");
   expect(
@@ -151,10 +243,26 @@ test("companies sign in without Telegram while operators use the Mini App", asyn
   ).toBeVisible();
   await page.getByRole("link", { name: "Sign in with access key" }).click();
   await expect(
-    page.getByRole("heading", { name: "Manage your job offers" }),
+    page.getByRole("heading", { name: "Company sign in" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "For employees", exact: true }),
+  ).toHaveAttribute("href", "/");
+  await expect(page.locator(".company-access .link-pending")).toHaveCount(0);
+  await expect(page.locator(".site-footer")).toHaveCount(0);
+  const title = await page
+    .getByRole("heading", { name: "Company sign in" })
+    .boundingBox();
+  const accessKeyLabel = await page
+    .getByText("Company access key", { exact: true })
+    .boundingBox();
+  expect(title).not.toBeNull();
+  expect(accessKeyLabel).not.toBeNull();
+  expect(accessKeyLabel!.y - title!.y - title!.height).toBeGreaterThanOrEqual(
+    16,
+  );
   await page.getByLabel("Company access key").fill("company-test-key");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/manage$/);
   await expect(page.getByText("Example Provider")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
@@ -169,24 +277,53 @@ test("companies sign in without Telegram while operators use the Mini App", asyn
 
 test("company sign in explains throttling", async ({ page }) => {
   await page.goto("/portal/login");
+  await expect(
+    page.getByText(
+      "Use the access key issued to your company. Keep this key private. Ask the Iter team to issue or replace a key.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText("No Telegram account is needed.")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "anxchywl@gmail.com" }),
+  ).toHaveAttribute("href", "mailto:anxchywl@gmail.com");
   await page.getByLabel("Company access key").fill("rate-limited");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByText("Too many sign-in attempts. Wait one minute and try again."),
   ).toBeVisible();
 });
 
-test("links that open Telegram hide inside the Mini App", async ({ page }) => {
+test("Telegram launch links hide while company access stays available", async ({
+  page,
+  context,
+}) => {
   await page.goto("/");
   await expect(page.locator('script[src="/telegram-mark.js?v=2"]')).toHaveCount(
     1,
   );
   const footerLink = page.getByRole("link", { name: "Open in Telegram" });
+  const manageLink = page
+    .locator(".site-header")
+    .getByRole("link", { name: "For employers" });
   await expect(footerLink).toBeVisible();
+  await expect(manageLink).toBeVisible();
+  await expect(manageLink.locator(".link-pending")).toHaveCount(0);
+  await expect(manageLink).toHaveAttribute("href", "/portal/login");
   await expect(footerLink).toHaveAttribute(
     "href",
     "https://t.me/iter_app_bot/vacancies?startapp",
   );
+  const footerBox = await page.locator(".footer-bottom").boundingBox();
+  const telegramBox = await footerLink.boundingBox();
+  expect(footerBox).not.toBeNull();
+  expect(telegramBox).not.toBeNull();
+  expect(
+    Math.abs(
+      telegramBox!.x +
+        telegramBox!.width / 2 -
+        (footerBox!.x + footerBox!.width / 2),
+    ),
+  ).toBeLessThan(2);
   await page.goto(`/jobs/${id}`);
   await expect(page.locator(".telegram-link")).toBeVisible();
 
@@ -196,6 +333,12 @@ test("links that open Telegram hide inside the Mini App", async ({ page }) => {
     page.getByRole("heading", { name: "Vacancies", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(footerLink).toBeHidden();
+  await expect(manageLink).toBeVisible();
+  await page.getByRole("button", { name: "Filters" }).click();
+  const telegramFilters = page.getByRole("dialog", { name: "Filters" });
+  await expect(telegramFilters).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(telegramFilters).not.toBeVisible();
   await page.getByRole("link", { name: /Front desk assistant/ }).click();
   await expect(
     page.getByRole("heading", { name: "Front desk assistant" }),
@@ -205,6 +348,25 @@ test("links that open Telegram hide inside the Mini App", async ({ page }) => {
 
   await page.goto("/?tgWebAppStartParam=vacancies");
   await expect(footerLink).toBeHidden();
+
+  const macOSPage = await context.newPage();
+  await macOSPage.addInitScript(() => {
+    Object.defineProperty(window, "webkit", {
+      value: {
+        messageHandlers: { performAction: { postMessage() {} } },
+      },
+    });
+  });
+  await macOSPage.goto("/");
+  await expect(
+    macOSPage.getByRole("link", { name: "Open in Telegram" }),
+  ).toBeHidden();
+  await expect(
+    macOSPage
+      .locator(".site-header")
+      .getByRole("link", { name: "For employers" }),
+  ).toBeVisible();
+  await macOSPage.close();
 });
 
 test("provider submits an offer and an operator publishes it", async ({
@@ -212,7 +374,7 @@ test("provider submits an offer and an operator publishes it", async ({
 }) => {
   await page.goto("/portal/login");
   await page.getByLabel("Company access key").fill("company-test-key");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByText("Example Provider")).toBeVisible();
   await page.getByLabel("Employer").selectOption("employer-1");
   await page.getByLabel("Internal reference").fill("summer-role");
@@ -527,9 +689,21 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   await expect(filters.getByLabel("Штат")).toBeHidden();
   await expect(filters.getByRole("heading", { name: "Фильтры" })).toBeHidden();
   await expect(filters.getByRole("button", { name: "Показать" })).toBeHidden();
-  await expect(filters.getByRole("button", { name: "Готово" })).toBeVisible();
+  const cityDone = filters.locator(".focus-done > button");
+  await expect(cityDone).toBeVisible();
+  const cityDoneStyle = await cityDone.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      background: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      box: (() => {
+        const rect = button.getBoundingClientRect();
+        return { x: rect.x, width: rect.width, height: rect.height };
+      })(),
+    };
+  });
   await filters.getByLabel("Город").fill("Albany");
-  await filters.getByRole("button", { name: "Готово" }).click();
+  await cityDone.click();
   await expect(filters.getByRole("button", { name: "Готово" })).toBeHidden();
   await expect(filters.getByLabel("Штат")).toBeVisible();
   await filters.getByRole("button", { name: /Начало не раньше/ }).click();
@@ -549,9 +723,59 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   if (await earlier.count()) await expect(earlier).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(filters.getByLabel("Город")).toBeVisible();
+  await filters
+    .getByRole("button", { name: /Последнее подтверждение/ })
+    .click();
+  const done = filters.getByRole("button", { name: "Готово" });
+  await expect(done).toBeVisible();
+  await expect(filters.getByRole("button", { name: "К фильтрам" })).toHaveCount(
+    0,
+  );
+  const panelDoneStyle = await done.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return {
+      background: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      box: (() => {
+        const rect = button.getBoundingClientRect();
+        return { x: rect.x, width: rect.width, height: rect.height };
+      })(),
+    };
+  });
+  expect(panelDoneStyle).toEqual(cityDoneStyle);
+  await done.click();
+  await expect(filters.getByRole("button", { name: "Готово" })).toBeHidden();
+  await expect(filters.getByLabel("Город")).toBeVisible();
+  await filters.getByLabel("Оплата от").fill("20");
+  await filters.getByRole("button", { name: "Готово" }).click();
+  await filters.getByRole("button", { name: /Валюта USD/ }).click();
+  await expect(filters.getByRole("button", { name: "EUR" })).toBeVisible();
+  await filters.getByRole("button", { name: "EUR" }).click();
+  await expect(
+    filters.getByRole("button", { name: /Валюта EUR/ }),
+  ).toBeVisible();
   await filters.getByRole("button", { name: "Показать" }).click();
   await expect(page).toHaveURL(new RegExp(`start_from=${chosen}`));
   await expect(page).toHaveURL(/city=Albany/);
+  await expect(page).toHaveURL(/min_wage=20/);
+  await expect(page).toHaveURL(/wage_currency=EUR/);
+});
+
+test("language changes preserve the vacancy list scroll position", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.evaluate(() => window.scrollTo({ top: 360, behavior: "instant" }));
+  const before = await page.evaluate(() => window.scrollY);
+  await page
+    .locator(".language-switch")
+    .evaluate((link: HTMLElement) => link.click());
+  await expect(page).toHaveURL(/^.*\/kk$/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "kk");
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(
+    before - 20,
+  );
 });
 
 test("review sheet focuses one field on phones and returns with done", async ({

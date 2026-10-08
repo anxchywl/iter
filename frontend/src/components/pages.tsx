@@ -60,7 +60,9 @@ export async function DirectoryPage({
   );
   return (
     <div className="content-wrap">
-      <h1 className="feed-title">{t.results}</h1>
+      <h1 id="results-heading" className="sr-only">
+        {t.results}
+      </h1>
       <JobFilters
         key={`${locale}:${currentParams}`}
         locale={locale}
@@ -71,9 +73,6 @@ export async function DirectoryPage({
         className="results-section"
         aria-labelledby="results-heading"
       >
-        <h2 id="results-heading" className="sr-only">
-          {t.results}
-        </h2>
         {result.kind === "ok" ? (
           result.data.items.length ? (
             <>
@@ -110,10 +109,8 @@ export async function DirectoryPage({
               )}
             </>
           ) : hasFilters ? (
-            <div className="state-panel">
+            <div className="state-panel empty-feed">
               <h3>{t.noResults}</h3>
-              <p>{t.noResultsText}</p>
-              <Link href={localePath(locale)}>{t.clear}</Link>
             </div>
           ) : (
             <div className="state-panel empty-feed">

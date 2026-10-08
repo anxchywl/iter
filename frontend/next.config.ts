@@ -5,12 +5,6 @@ const nextConfig: NextConfig = {
   agentRules: false,
   poweredByHeader: false,
   async headers() {
-    const scriptSource =
-      process.env.NODE_ENV === "development"
-        ? "'self' 'unsafe-inline' 'unsafe-eval'"
-        : "'self'";
-    const contentSecurityPolicy = (frameAncestors: string) =>
-      `default-src 'self'; script-src ${scriptSource}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors ${frameAncestors}`;
     return [
       {
         source: "/:path*",
@@ -20,28 +14,6 @@ const nextConfig: NextConfig = {
           {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
-          },
-          {
-            key: "Content-Security-Policy",
-            value: contentSecurityPolicy("'self' https://*.telegram.org"),
-          },
-        ],
-      },
-      {
-        source: "/manage/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: contentSecurityPolicy("'self'"),
-          },
-        ],
-      },
-      {
-        source: "/portal/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: contentSecurityPolicy("'self'"),
           },
         ],
       },

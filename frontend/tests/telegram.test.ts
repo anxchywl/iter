@@ -109,6 +109,23 @@ describe("telegram bridge", () => {
     expect(sent).toHaveLength(5);
   });
 
+  it("uses the native macOS bridge when available", () => {
+    const sent: { eventName: string; eventData: string }[] = [];
+    const win: TelegramWindow = {
+      location: { hash: "", search: "" },
+      parent: null,
+      webkit: {
+        messageHandlers: {
+          performAction: { postMessage: (message) => sent.push(message) },
+        },
+      },
+    };
+    win.parent = win;
+    expect(startTelegramApp(win)).toBe(true);
+    expect(sent).toHaveLength(5);
+    expect(sent[0]).toEqual({ eventName: "web_app_ready", eventData: "{}" });
+  });
+
   it("posts start events only to telegram web", () => {
     const { win, posted } = framedWindow(launch);
     expect(startTelegramApp(win)).toBe(true);
@@ -150,6 +167,7 @@ describe("telegram bridge", () => {
     function marked(
       globals: {
         proxy?: boolean;
+        macOS?: boolean;
         hash?: string;
         search?: string;
         stored?: string;
@@ -172,7 +190,11 @@ describe("telegram bridge", () => {
         "document",
         telegramMarkScript,
       )(
-        globals.proxy ? { TelegramWebviewProxy: {} } : {},
+        globals.proxy
+          ? { TelegramWebviewProxy: {} }
+          : globals.macOS
+            ? { webkit: { messageHandlers: { performAction: {} } } }
+            : {},
         { hash: globals.hash ?? "", search: globals.search ?? "" },
         storage,
         { documentElement: { dataset } },
@@ -183,6 +205,7 @@ describe("telegram bridge", () => {
     expect(marked({ hash: "#section" })).toBe(false);
     expect(marked({ hash: "#tgWebAppData=x" })).toBe(false);
     expect(marked({ proxy: true })).toBe(true);
+    expect(marked({ macOS: true })).toBe(true);
     expect(marked({ hash: "#tgWebAppData=x&tgWebAppPlatform=ios" })).toBe(true);
     expect(marked({ search: "?tgWebAppStartParam=vacancies" })).toBe(true);
     expect(marked({ stored: "tgWebAppPlatform=weba" })).toBe(true);

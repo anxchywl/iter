@@ -137,9 +137,36 @@ p {
 .brand-initial {
   color: var(--teal);
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  margin-left: auto;
+}
+.company-access {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--teal-deep);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  text-decoration: none;
+  transition: border-color 0.18s ease;
+}
+@media (hover: hover) {
+  .company-access:hover {
+    border-color: var(--teal);
+  }
+}
 .language-switch {
   position: relative;
-  margin-left: auto;
   padding: 0.4rem 0.2rem;
   border-bottom: 2px solid var(--teal);
   color: var(--teal-deep);
@@ -161,10 +188,18 @@ p {
   letter-spacing: -0.025em;
 }
 .job-tools {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  transition:
+    grid-template-columns 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+    gap 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.job-tools[data-focus] {
+  grid-template-columns: minmax(0, 1fr) 0;
+  gap: 0;
 }
 .job-search {
   display: flex;
@@ -175,6 +210,11 @@ p {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #f8faf8;
+  transition: border-radius 0.22s ease;
+}
+.job-tools[data-focus] > .job-search[data-active] {
+  grid-column: 1;
+  border-radius: 10px;
 }
 .job-search:focus-within {
   border-color: var(--teal);
@@ -188,11 +228,17 @@ p {
   background: transparent;
   color: var(--ink);
   font-size: 0.83rem;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.job-search input[type="search"]::-webkit-search-cancel-button {
+  display: none;
 }
 .job-search input::placeholder {
   color: #86948d;
 }
 .job-search button {
+  position: relative;
   display: grid;
   place-items: center;
   flex: none;
@@ -202,6 +248,33 @@ p {
   background: transparent;
   color: var(--teal);
   cursor: pointer;
+}
+.job-search button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -3px;
+  border-radius: 8px;
+}
+.job-search button svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.job-search button .search-icon {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+.job-search button .clear-icon {
+  opacity: 0;
+  transform: rotate(-75deg) scale(0.65);
+}
+.job-search button[data-clearing] .search-icon {
+  opacity: 0;
+  transform: rotate(75deg) scale(0.65);
+}
+.job-search button[data-clearing] .clear-icon {
+  opacity: 1;
+  transform: rotate(0) scale(1);
 }
 .job-search svg,
 .filter-trigger svg {
@@ -221,9 +294,19 @@ p {
   background: #fff;
   color: var(--ink);
   cursor: pointer;
+  transform-origin: right center;
+  overflow: hidden;
   transition:
     border-color 0.18s ease,
-    transform 0.14s ease;
+    opacity 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
+    visibility 0s linear 0.24s;
+}
+.job-tools[data-focus] .filter-trigger {
+  opacity: 0;
+  transform: scaleX(0.78);
+  visibility: hidden;
+  pointer-events: none;
 }
 .filter-trigger:active {
   transform: scale(0.94);
@@ -428,6 +511,22 @@ p {
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
+}
+.filter-actions .panel-done {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: 12px;
+  background: var(--teal);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s ease;
+}
+.filter-actions .panel-done:active {
+  transform: scale(0.98);
 }
 .calendar {
   padding: 0.2rem 1rem 0.9rem;
@@ -760,19 +859,27 @@ p {
   padding: 0.8rem 1rem calc(1rem + env(safe-area-inset-bottom));
 }
 .footer-bottom {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
   color: var(--muted);
   font-size: 0.7rem;
 }
+.footer-utilities {
+  display: flex;
+  grid-column: 3;
+  align-items: center;
+  justify-self: end;
+  gap: 0.25rem;
+}
 .footer-source {
   display: grid;
   place-items: center;
+  justify-self: end;
   width: 36px;
   height: 36px;
-  margin: -6px -8px -6px 0;
+  margin: -6px 0;
   border-radius: 999px;
   color: var(--ink);
   transition:
@@ -788,6 +895,21 @@ p {
 .footer-source .icon {
   width: 20px;
   height: 20px;
+}
+.footer-bottom .language-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.2rem;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.footer-bottom .language-switch:hover {
+  color: var(--teal-deep);
 }
 .link-pending {
   display: none;
@@ -905,9 +1027,12 @@ p {
   font-weight: 700;
 }
 .telegram-launch {
-  display: inline-block;
-  margin-top: 0.5rem;
+  display: inline-flex;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
   font-size: 0.7rem;
+  text-align: center;
 }
 [data-telegram] .telegram-launch,
 [data-telegram] .telegram-link {
@@ -1513,11 +1638,61 @@ html:has(dialog[open]) {
 }
 
 .portal-login {
-  max-width: 520px;
-  padding: 2rem;
+  max-width: 440px;
+  margin: auto;
+  padding: 1.5rem;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 14px;
   background: var(--white);
+}
+
+.portal-login h1 {
+  margin: 0 0 1.25rem;
+  font-size: 1.7rem;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  text-align: center;
+}
+
+.content-wrap:has(.portal-login) {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-block: 1.25rem;
+}
+
+.portal-login .portal-form {
+  gap: 0.85rem;
+}
+
+.portal-login .portal-form input {
+  min-height: 46px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.portal-login .portal-form button {
+  min-height: 44px;
+  border-radius: 8px;
+}
+
+.portal-login .portal-hint {
+  margin-top: 1rem;
+  padding: 0;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.portal-contact {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--teal-deep);
+  font-size: 0.84rem;
+  text-align: center;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
 }
 
 .portal-kicker {
