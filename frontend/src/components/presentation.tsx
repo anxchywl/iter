@@ -54,21 +54,26 @@ export function amount(
   return `${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency} / ${basisLabel}`;
 }
 
-function sourceLink(url: string | null, label: string, t: Copy) {
-  const link = url ? safeContact(url) : null;
-  return link && (link.kind === "web" || link.kind === "telegram") ? (
-    <a
-      href={link.href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={`${label}: ${link.destination}`}
-    >
-      {label}
-      <ExternalIcon />
-    </a>
-  ) : (
-    <span>{t.unknown}</span>
-  );
+function sourceLinks(sources: [string | null, string, boolean][]) {
+  const seen = new Set<string>();
+  return sources.flatMap(([url, label, shown]) => {
+    const link = shown && url ? safeContact(url) : null;
+    if (!link || (link.kind !== "web" && link.kind !== "telegram")) return [];
+    if (seen.has(link.href)) return [];
+    seen.add(link.href);
+    return (
+      <a
+        key={link.href}
+        href={link.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${label}: ${link.destination}`}
+      >
+        {label}
+        <ExternalIcon />
+      </a>
+    );
+  });
 }
 
 export function TrustFacts({
@@ -134,17 +139,24 @@ export function TrustFacts({
         </div>
       </dl>
       <div className="evidence-links">
-        {listing.employer_identity_status === "checked" &&
-          sourceLink(
+        {sourceLinks([
+          [listing.official_source_url, t.source, true],
+          [
             listing.employer_identity_public_source_url,
-            t.evidenceSource,
-            t,
-          )}
-        {sourceLink(listing.official_source_url, t.source, t)}
-        {listing.sponsor_route_status !== "not_reported" &&
-          sourceLink(listing.sponsor_route_source_url, t.evidenceSource, t)}
-        {listing.sponsor_approval_status !== "unknown" &&
-          sourceLink(listing.sponsor_decision_url, t.evidenceSource, t)}
+            t.sourceIdentity,
+            listing.employer_identity_status === "checked",
+          ],
+          [
+            listing.sponsor_route_source_url,
+            t.sourceRoute,
+            listing.sponsor_route_status !== "not_reported",
+          ],
+          [
+            listing.sponsor_decision_url,
+            t.sourceDecision,
+            listing.sponsor_approval_status !== "unknown",
+          ],
+        ])}
       </div>
     </>
   );

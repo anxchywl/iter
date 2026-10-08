@@ -1646,6 +1646,9 @@ html[data-theme="dark"] .demo-banner {
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
 }
+.evidence-links:empty {
+  display: none;
+}
 .evidence-links a,
 .trust-list a,
 .telegram-link,

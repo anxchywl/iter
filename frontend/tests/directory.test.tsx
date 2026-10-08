@@ -224,6 +224,29 @@ describe("public search and rendering", () => {
     );
   });
 
+  it("names each evidence link and drops repeated destinations", () => {
+    const html = renderToStaticMarkup(
+      <TrustFacts
+        listing={{
+          ...listing,
+          employer_identity_status: "checked",
+          employer_identity_public_source_url: listing.official_source_url,
+          sponsor_approval_status: "pending",
+          sponsor_decision_url: "https://example.com/sponsor",
+        }}
+        locale="en"
+      />,
+    );
+    const links = html.slice(html.indexOf('<div class="evidence-links">'));
+    expect(links.split(`href="${listing.official_source_url}"`)).toHaveLength(
+      2,
+    );
+    expect(links).toContain(">Official job source<");
+    expect(links).not.toContain(">Sponsor route<");
+    expect(links).toContain(">Sponsor decision<");
+    expect(links).not.toContain(">Source<");
+  });
+
   it("localizes platform paths and reveals the destination before the contact link", () => {
     expect(localePath("ru", `/jobs/${listing.id}`)).toBe(
       `/ru/jobs/${listing.id}`,
