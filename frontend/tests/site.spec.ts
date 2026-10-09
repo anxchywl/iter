@@ -783,6 +783,9 @@ test("detail shows distinct trust facts and contact destination before leaving",
     page.getByText("Демеушінің мақұлдауы расталмаған"),
   ).toBeVisible();
   await expect(page.getByText("120.00 USD / апта")).toBeVisible();
+  const backPending = page.locator(".back-link .link-pending");
+  await backPending.evaluate((node) => node.setAttribute("data-pending", ""));
+  await expect(backPending).toHaveCSS("display", "none");
   const trustList = page.locator(".trust-list");
   const evidenceLinks = page.locator(".evidence-links");
   await expect(trustList.getByRole("link")).toHaveCount(0);

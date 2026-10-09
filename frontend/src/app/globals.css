@@ -1286,7 +1286,8 @@ html[data-theme="dark"] .demo-banner {
 .listing-link:has(.link-pending[data-pending]) {
   background: var(--mint);
 }
-.language-switch .link-pending[data-pending] {
+.language-switch .link-pending[data-pending],
+.back-link .link-pending[data-pending] {
   display: none;
 }
 .route-skeleton {
