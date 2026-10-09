@@ -192,6 +192,16 @@ class ListingEdit(InputModel):
     content: ListingContent
 
 
+class AdminListingCreate(ListingContent):
+    organization_id: UUID4 | None = None
+
+
+class AdminListingEdit(ListingEdit):
+    reason: str | None = Field(default=None, min_length=1, max_length=300)
+
+    _reason = field_validator("reason")(plain_text)
+
+
 class VersionedAction(InputModel):
     expected_version: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=300)

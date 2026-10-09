@@ -12,7 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import create_engine, func, or_, select
+from sqlalchemy import and_, case, create_engine, func, not_, or_, select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
@@ -29,6 +29,8 @@ from app.models import (
     Review,
 )
 from app.schemas import (
+    AdminListingCreate,
+    AdminListingEdit,
     Confirmation,
     EmployerCreate,
     EmployerEdit,
@@ -244,6 +246,22 @@ def blocks_publication(session: Session, listing: Listing, moment: datetime) -> 
         listing.season_year < moment.year
         or (listing.work_end_date is not None and listing.work_end_date < moment.date())
         or session.get(Employer, listing.employer_id).identity_status == "disputed"
+    )
+
+
+def effective_status(listing: Listing, moment: datetime) -> str:
+    if listing.status == "published" and not is_fresh(listing, moment):
+        return "expired"
+    if listing.status == "draft" and listing.submission_status == "pending":
+        return "pending"
+    return listing.status
+
+
+def effective_status_sql(moment: datetime):
+    return case(
+        (and_(Listing.status == "published", not_(and_(*fresh_query(moment)))), "expired"),
+        (and_(Listing.status == "draft", Listing.submission_status == "pending"), "pending"),
+        else_=Listing.status,
     )
 
 
@@ -877,7 +895,21 @@ def create_app(
         organizations = session.scalars(
             select(Organization).order_by(Organization.name, Organization.id)
         ).all()
-        return {"items": [organization_record(organization) for organization in organizations]}
+        counts: dict[str, dict[str, int]] = {}
+        state = effective_status_sql(now_utc()).label("state")
+        for organization_id, status, total in session.execute(
+            select(Listing.organization_id, state, func.count())
+            .where(Listing.organization_id.is_not(None))
+            .group_by(Listing.organization_id, state)
+        ):
+            counts.setdefault(organization_id, {})[status] = total
+        return {
+            "items": [
+                organization_record(organization)
+                | {"listing_counts": counts.get(organization.id, {})}
+                for organization in organizations
+            ]
+        }
 
     @app.get("/api/v1/admin/organizations/{organization_id}")
     def read_organization(organization_id: str, session: SessionDep, _: AdminDep) -> dict:
@@ -921,6 +953,8 @@ def create_app(
             organization = organization_by_id(session, organization_id)
             session.refresh(organization, with_for_update=True)
             checked_version(organization.version, payload.expected_version)
+            if not organization.website_url or not organization.address:
+                raise conflict()
             organization.access_key_hash = hashlib.sha256(access_key.encode()).hexdigest()
             organization.access_key_hint = access_key[-8:]
             organization.access_key_created_at = now_utc()
@@ -1032,15 +1066,99 @@ def create_app(
         return jsonable_encoder(admin_record(employer))
 
     @app.post("/api/v1/admin/listings", status_code=201)
-    def create_listing(payload: ListingContent, session: SessionDep, actor: AdminDep) -> dict:
+    def create_listing(payload: AdminListingCreate, session: SessionDep, actor: AdminDep) -> dict:
+        organization_id = str(payload.organization_id) if payload.organization_id else None
         with session.begin():
             if session.get(Employer, payload.employer_id) is None:
                 raise HTTPException(status_code=422, detail="Invalid request")
-            listing = Listing(**payload.model_dump(), status="draft", state_changed_at=now_utc())
+            if organization_id and session.get(Organization, organization_id) is None:
+                raise HTTPException(status_code=422, detail="Invalid request")
+            listing = Listing(
+                **payload.model_dump(exclude={"organization_id"}),
+                organization_id=organization_id,
+                status="draft",
+                submission_status="draft",
+                state_changed_at=now_utc(),
+            )
             session.add(listing)
             session.flush()
-            audit(session, actor, "listing_created", "listing", listing.id, {"status": "draft"})
+            audit(
+                session,
+                actor,
+                "listing_created",
+                "listing",
+                listing.id,
+                {"status": "draft", "organization_id": organization_id},
+            )
         return jsonable_encoder(admin_record(listing))
+
+    @app.get("/api/v1/admin/listings")
+    def admin_listings(
+        session: SessionDep,
+        _: AdminDep,
+        status: Annotated[
+            str, Query(pattern="^(open|all|draft|pending|published|paused|expired|closed)$")
+        ] = "open",
+        organization_id: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
+        q: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+        cursor: Annotated[str | None, Query(min_length=36, max_length=36)] = None,
+    ) -> dict:
+        moment = now_utc()
+        conditions = []
+        if status != "all":
+            effective = effective_status_sql(moment)
+            conditions.append(effective != "closed" if status == "open" else effective == status)
+        if organization_id:
+            conditions.append(Listing.organization_id == organization_id)
+        if q:
+            escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            conditions.append(
+                or_(
+                    Listing.role.ilike(pattern, escape="\\"),
+                    Listing.city.ilike(pattern, escape="\\"),
+                    Listing.source_identifier.ilike(pattern, escape="\\"),
+                    Employer.legal_name.ilike(pattern, escape="\\"),
+                    Organization.name.ilike(pattern, escape="\\"),
+                )
+            )
+        if cursor:
+            boundary = session.get(Listing, cursor)
+            if boundary is None:
+                raise missing()
+            conditions.append(
+                or_(
+                    Listing.state_changed_at < boundary.state_changed_at,
+                    and_(
+                        Listing.state_changed_at == boundary.state_changed_at,
+                        Listing.id < boundary.id,
+                    ),
+                )
+            )
+        rows = session.execute(
+            select(Listing, Employer.legal_name, Organization.name)
+            .join(Listing.employer)
+            .outerjoin(Listing.organization)
+            .where(*conditions)
+            .order_by(Listing.state_changed_at.desc(), Listing.id.desc())
+            .limit(limit + 1)
+        ).all()
+        items = [
+            admin_record(listing)
+            | {
+                "effective_status": effective_status(listing, moment),
+                "employer_name": employer_name,
+                "organization_name": organization_name,
+            }
+            for listing, employer_name, organization_name in rows[:limit]
+        ]
+        return jsonable_encoder(
+            {
+                "items": items,
+                "next_cursor": rows[limit - 1][0].id if len(rows) > limit else None,
+            }
+        )
 
     @app.get("/api/v1/admin/listings/{listing_id}")
     def read_admin_listing(listing_id: str, session: SessionDep, actor: AdminDep) -> dict:
@@ -1057,23 +1175,34 @@ def create_app(
 
     @app.put("/api/v1/admin/listings/{listing_id}")
     def edit_listing(
-        listing_id: str, payload: ListingEdit, session: SessionDep, actor: AdminDep
+        listing_id: str, payload: AdminListingEdit, session: SessionDep, actor: AdminDep
     ) -> dict:
         with session.begin():
             listing = locked_listing(session, listing_id, payload.expected_version)
-            if listing.status in {"published", "closed"}:
+            if listing.status == "closed" or listing.submission_status == "pending":
                 raise conflict()
             immutable = (listing.employer_id, listing.season_year, listing.source_identifier)
-            changed = payload.content.model_dump()
+            content = payload.content.model_dump()
             if immutable != (
-                changed["employer_id"],
-                changed["season_year"],
-                changed["source_identifier"],
+                content["employer_id"],
+                content["season_year"],
+                content["source_identifier"],
             ):
                 raise conflict()
-            for name, value in changed.items():
-                setattr(listing, name, value)
-            listing.state_changed_at = now_utc()
+            fields = sorted(
+                name for name, value in content.items() if getattr(listing, name) != value
+            )
+            if not fields:
+                return jsonable_encoder(admin_record(listing))
+            live = listing.status == "published"
+            if live and {"official_source_url", "contact_url"} & set(fields) and not payload.reason:
+                raise HTTPException(status_code=422, detail="Invalid request")
+            for name in fields:
+                setattr(listing, name, content[name])
+            if live and blocks_publication(session, listing, now_utc()):
+                raise conflict()
+            if not live:
+                listing.state_changed_at = now_utc()
             listing.version += 1
             audit(
                 session,
@@ -1081,9 +1210,86 @@ def create_app(
                 "listing_edited",
                 "listing",
                 listing.id,
-                {"version": listing.version},
+                {
+                    "version": listing.version,
+                    "fields": fields,
+                    "live": live,
+                    "reason": payload.reason,
+                },
             )
         return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/admin/listings/{listing_id}/republish")
+    def republish_listing(
+        listing_id: str, payload: Confirmation, session: SessionDep, actor: AdminDep
+    ) -> dict:
+        with session.begin():
+            listing = locked_listing(session, listing_id, payload.expected_version)
+            moment = now_utc()
+            stale = listing.status == "published" and not is_fresh(listing, moment)
+            if not (listing.status in {"paused", "expired"} or stale):
+                raise conflict()
+            if blocks_publication(session, listing, moment):
+                raise conflict()
+            previous = "expired" if stale else listing.status
+            listing.last_confirmed_at = moment
+            listing.confirmation_source_url = payload.confirmation_source_url
+            listing.published_at = moment
+            listing.status = "published"
+            listing.state_changed_at = moment
+            listing.version += 1
+            audit(
+                session,
+                actor,
+                "listing_confirmed",
+                "listing",
+                listing.id,
+                {"source_url": payload.confirmation_source_url, "reason": payload.reason},
+            )
+            audit(
+                session,
+                actor,
+                "listing_published",
+                "listing",
+                listing.id,
+                {"from": previous, "to": "published", "reason": payload.reason},
+            )
+        return jsonable_encoder(admin_record(listing))
+
+    @app.post("/api/v1/admin/listings/{listing_id}/delete")
+    def delete_listing(
+        listing_id: str, payload: VersionedAction, session: SessionDep, actor: AdminDep
+    ) -> dict:
+        with session.begin():
+            listing = locked_listing(session, listing_id, payload.expected_version)
+            if (
+                listing.status != "draft"
+                or listing.published_at is not None
+                or listing.submission_status == "pending"
+                or session.scalar(select(Review.id).where(Review.listing_id == listing.id).limit(1))
+                or session.scalar(
+                    select(Report.id)
+                    .where(Report.item_type == "listing", Report.item_id == listing.id)
+                    .limit(1)
+                )
+            ):
+                raise conflict()
+            audit(
+                session,
+                actor,
+                "listing_deleted",
+                "listing",
+                listing.id,
+                {
+                    "organization_id": listing.organization_id,
+                    "employer_id": listing.employer_id,
+                    "season_year": listing.season_year,
+                    "source_identifier": listing.source_identifier,
+                    "reason": payload.reason,
+                },
+            )
+            session.delete(listing)
+        return {"deleted": listing_id}
 
     @app.post("/api/v1/admin/listings/{listing_id}/confirm")
     def confirm_listing(
