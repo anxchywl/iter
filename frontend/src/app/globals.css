@@ -193,7 +193,7 @@ p {
   margin-left: auto;
 }
 .header-actions[data-hidden] {
-  display: none;
+  visibility: hidden;
 }
 .company-access {
   display: inline-flex;
@@ -2306,7 +2306,7 @@ html:has(dialog[open]) {
 
   .app-shell:has(.detail-wrap) .header-inner,
   .app-shell:has(.detail-wrap) .footer-inner {
-    width: min(100%, 1180px);
+    width: min(100%, 1360px);
     margin-inline: auto;
     padding-inline: 2rem;
   }
@@ -2463,15 +2463,18 @@ html:has(dialog[open]) {
     padding-inline: 2rem;
   }
 
-  .app-shell:has(.directory-page) .header-inner {
+  .app-shell:has(.directory-page) .header-inner,
+  .app-shell:has(.detail-wrap) .header-inner {
     min-height: 68px;
   }
 
-  .app-shell:has(.directory-page) .brand {
+  .app-shell:has(.directory-page) .brand,
+  .app-shell:has(.detail-wrap) .brand {
     font-size: 1.85rem;
   }
 
-  .app-shell:has(.directory-page) .company-access {
+  .app-shell:has(.directory-page) .company-access,
+  .app-shell:has(.detail-wrap) .company-access {
     min-height: 40px;
     padding-inline: 1rem;
     font-size: 0.92rem;
