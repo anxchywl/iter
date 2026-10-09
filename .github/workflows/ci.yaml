@@ -70,9 +70,16 @@ jobs:
         run: |
           config=/etc/docker/daemon.json
           current=$(sudo cat "$config" 2>/dev/null || echo '{}')
-          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"], "debug": true}' | sudo tee "$config" >/dev/null
           sudo systemctl restart docker
           docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          echo "daemon config: $(sudo cat "$config")"
+          docker version --format 'client {{.Client.Version}} server {{.Server.Version}}'
+          for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
+            curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
+          done
+          time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
+          sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
       - name: Sign in to Docker Hub
         # raises the image pull limit; forks and repositories without the settings pull anonymously
         if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -85,6 +92,9 @@ jobs:
         env:
           CI: "true"
         run: ./scripts/verify.sh security
+      - name: Show Docker daemon log
+        if: failure()
+        run: sudo journalctl -u docker --no-pager | grep -iE "mirror|trying to pull|fallback|error|registry" | tail -120
 
   backend:
     name: Backend and database
@@ -101,9 +111,16 @@ jobs:
         run: |
           config=/etc/docker/daemon.json
           current=$(sudo cat "$config" 2>/dev/null || echo '{}')
-          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"], "debug": true}' | sudo tee "$config" >/dev/null
           sudo systemctl restart docker
           docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          echo "daemon config: $(sudo cat "$config")"
+          docker version --format 'client {{.Client.Version}} server {{.Server.Version}}'
+          for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
+            curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
+          done
+          time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
+          sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
       - name: Sign in to Docker Hub
         # raises the image pull limit; forks and repositories without the settings pull anonymously
         if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -116,6 +133,9 @@ jobs:
         env:
           CI: "true"
         run: ./scripts/verify.sh backend
+      - name: Show Docker daemon log
+        if: failure()
+        run: sudo journalctl -u docker --no-pager | grep -iE "mirror|trying to pull|fallback|error|registry" | tail -120
 
   frontend:
     name: Frontend quality and build
@@ -157,9 +177,16 @@ jobs:
         run: |
           config=/etc/docker/daemon.json
           current=$(sudo cat "$config" 2>/dev/null || echo '{}')
-          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"], "debug": true}' | sudo tee "$config" >/dev/null
           sudo systemctl restart docker
           docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          echo "daemon config: $(sudo cat "$config")"
+          docker version --format 'client {{.Client.Version}} server {{.Server.Version}}'
+          for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
+            curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
+          done
+          time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
+          sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
       - name: Sign in to Docker Hub
         # raises the image pull limit; forks and repositories without the settings pull anonymously
         if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -172,6 +199,9 @@ jobs:
         env:
           CI: "true"
         run: ./scripts/verify.sh browser
+      - name: Show Docker daemon log
+        if: failure()
+        run: sudo journalctl -u docker --no-pager | grep -iE "mirror|trying to pull|fallback|error|registry" | tail -120
 
   verify:
     name: verify
