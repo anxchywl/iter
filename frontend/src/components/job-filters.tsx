@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getCopy, intlLocale, localePath, type Locale } from "@/lib/copy";
-import type { SearchFilters } from "@/lib/directory";
+import type { Place, SearchFilters } from "@/lib/directory";
 import { useFocusMode } from "@/lib/focus-mode";
 import { morph } from "@/lib/motion";
 import { Calendar } from "@/components/calendar";
 import { FocusDone } from "@/components/focus-done";
+import { LocationField } from "@/components/location-field";
 import { Sheet, useSheet } from "@/components/sheet";
 
 type DateKey = "start_from" | "end_by";
@@ -28,9 +29,11 @@ function isDate(panel: Panel): panel is DateKey {
 export function JobFilters({
   locale,
   filters,
+  locations = [],
 }: {
   locale: Locale;
   filters: SearchFilters;
+  locations?: Place[];
 }) {
   const t = getCopy(locale);
   const sheet = useSheet();
@@ -51,6 +54,10 @@ export function JobFilters({
     housing_known: filters.housing_known,
     confirmed_within_days: filters.confirmed_within_days,
     favourites: filters.favourites,
+  });
+  const [place, setPlace] = useState({
+    state: filters.state,
+    city: filters.city,
   });
   const [panel, setPanel] = useState<Panel | null>(null);
   const [desktopPanel, setDesktopPanel] = useState<Panel | null>(null);
@@ -121,6 +128,18 @@ export function JobFilters({
       ["1", t.favourites],
     ],
   };
+  const stateOptions = [...new Set(locations.map((item) => item.state))].map(
+    (value) => ({ value }),
+  );
+  const cityOptions = place.state
+    ? [
+        ...new Set(
+          locations
+            .filter((item) => item.state === place.state)
+            .map((item) => item.city),
+        ),
+      ].map((value) => ({ value }))
+    : locations.map((item) => ({ value: item.city, hint: item.state }));
   const shortDate = new Intl.DateTimeFormat(intlLocale(locale), {
     day: "numeric",
     month: "long",
@@ -374,6 +393,54 @@ export function JobFilters({
     );
   }
 
+  function locationFields(wrapperProps?: Record<string, boolean>) {
+    return (
+      <>
+        <LocationField
+          name="state"
+          label={t.state}
+          value={place.state}
+          options={stateOptions}
+          placeholder={t.anyState}
+          emptyLabel={t.noMatches}
+          clearLabel={t.clearDate}
+          maxLength={80}
+          wrapperProps={wrapperProps}
+          onChange={(option) =>
+            setPlace((current) => ({
+              state: option?.value ?? "",
+              city:
+                option &&
+                !locations.some(
+                  (item) =>
+                    item.state === option.value && item.city === current.city,
+                )
+                  ? ""
+                  : current.city,
+            }))
+          }
+        />
+        <LocationField
+          name="city"
+          label={t.city}
+          value={place.city}
+          options={cityOptions}
+          placeholder={t.anyCity}
+          emptyLabel={t.noMatches}
+          clearLabel={t.clearDate}
+          maxLength={120}
+          wrapperProps={wrapperProps}
+          onChange={(option) =>
+            setPlace((current) => ({
+              state: option?.hint ?? current.state,
+              city: option?.value ?? "",
+            }))
+          }
+        />
+      </>
+    );
+  }
+
   function favouriteToggle() {
     const active = choices.favourites === "1";
     return (
@@ -544,14 +611,7 @@ export function JobFilters({
           <div className="filter-favourite-row">{favouriteToggle()}</div>
           <input type="hidden" name="q" value={query} />
           <div className="desktop-filter-group">
-            <label>
-              {t.state}
-              <input name="state" maxLength={80} defaultValue={filters.state} />
-            </label>
-            <label>
-              {t.city}
-              <input name="city" maxLength={120} defaultValue={filters.city} />
-            </label>
+            {locationFields()}
             {desktopPickerField("season", choices.season, "choice")}
             {desktopPickerField("category", choices.category, "choice")}
           </div>
@@ -699,14 +759,7 @@ export function JobFilters({
             </div>
           )}
           <div className="filter-fields" hidden={Boolean(panel)}>
-            <label data-field data-morph>
-              {t.state}
-              <input name="state" maxLength={80} defaultValue={filters.state} />
-            </label>
-            <label data-field data-morph>
-              {t.city}
-              <input name="city" maxLength={120} defaultValue={filters.city} />
-            </label>
+            {locationFields({ "data-field": true, "data-morph": true })}
             {pickerField("season", choices.season, "choice")}
             {pickerField("category", choices.category, "choice")}
             {pickerField("start_from", dates.start_from, "date")}

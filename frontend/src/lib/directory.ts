@@ -178,6 +178,13 @@ export function listListings(filters: SearchFilters) {
   }>(`/api/v1/listings?${searchQuery(filters)}`);
 }
 
+export type Place = { state: string; city: string };
+
+export async function listLocations(): Promise<Place[]> {
+  const result = await api<{ items: Place[] }>("/api/v1/listings/locations");
+  return result.kind === "ok" ? result.data.items : [];
+}
+
 export function getListing(id: string) {
   return api<Listing>(`/api/v1/listings/${encodeURIComponent(id)}`);
 }

@@ -585,6 +585,107 @@ p {
   outline: 0;
   box-shadow: 0 0 0 3px rgba(31, 105, 93, 0.14);
 }
+.location-field {
+  position: relative;
+  min-width: 0;
+}
+.location-field:focus-within > label {
+  color: var(--teal-deep);
+}
+.location-control {
+  position: relative;
+}
+.location-control input {
+  padding-right: 2.1rem;
+  text-overflow: ellipsis;
+}
+.location-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.location-clear:hover {
+  color: var(--ink);
+}
+.location-clear svg {
+  width: 15px;
+  height: 15px;
+}
+.location-options {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  max-height: 264px;
+  margin: 0;
+  padding: 0.3rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 18px 44px rgb(26 48 39 / 16%);
+  color: var(--ink);
+  list-style: none;
+}
+@media (max-width: 640px) {
+  .filter-fields > .location-field[data-active] {
+    grid-template-rows: none;
+  }
+  .filter-fields .location-options {
+    position: static;
+    height: min(40dvh, 264px);
+    max-height: none;
+    margin-top: 0.1rem;
+    box-shadow: none;
+  }
+  .filter-fields > .location-field:not([data-active]) .location-options {
+    display: none;
+  }
+}
+.location-options li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 400;
+  cursor: pointer;
+}
+.location-options li[aria-selected="true"] {
+  background: var(--mint);
+  color: var(--teal-deep);
+}
+.location-options li[data-current] > span {
+  font-weight: 700;
+}
+.location-options mark {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+}
+.location-options small {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.location-options .location-empty {
+  color: var(--muted);
+  cursor: default;
+}
 .picker-field button {
   display: flex;
   align-items: center;

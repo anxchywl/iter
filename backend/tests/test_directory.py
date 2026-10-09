@@ -485,6 +485,23 @@ def test_public_visibility_filters_and_bounded_pages(client, auth):
     assert client.get(f"/api/v1/listings/{hidden['id']}").status_code == 404
 
 
+def test_locations_list_only_current_vacancy_places_once(client, auth):
+    owner = employer(client, auth)
+    published(client, auth, owner["id"])
+    published(client, auth, owner["id"], "role-2", city="Buffalo", role="Cashier")
+    published(client, auth, owner["id"], "role-3", role="Cook")
+    draft(client, auth, owner["id"], "unpublished", city="Ithaca")
+
+    response = client.get("/api/v1/listings/locations")
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {"state": "New York", "city": "Albany"},
+            {"state": "New York", "city": "Buffalo"},
+        ]
+    }
+
+
 def test_stale_listing_is_unavailable_even_before_persisted_expiry(client, auth, database_url):
     owner = employer(client, auth)
     item = published(client, auth, owner["id"])

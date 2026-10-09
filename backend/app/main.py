@@ -405,6 +405,17 @@ def create_app(
             }
         )
 
+    @app.get("/api/v1/listings/locations")
+    def listing_locations(session: SessionDep) -> dict:
+        rows = session.execute(
+            select(Listing.state, Listing.city)
+            .where(*fresh_query(now_utc()))
+            .distinct()
+            .order_by(Listing.state, Listing.city)
+            .limit(500)
+        ).all()
+        return {"items": [{"state": state, "city": city} for state, city in rows]}
+
     @app.get("/api/v1/listings/{listing_id}")
     def get_listing(listing_id: str, session: SessionDep) -> dict:
         listing = session.scalar(

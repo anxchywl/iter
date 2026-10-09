@@ -24,7 +24,7 @@ FastAPI's built-in OpenTelemetry auto-configuration is disabled, so environment 
 
 Rejecting or removing a review erases its stored role and free text in the same transaction as the status change. The structured answers and content hash remain for audit and retry behavior; operator reasons must not repeat private content.
 
-`GET /api/v1/listings` accepts `q`, `season`, `state`, `city`, `category`, `start_from`, `end_by`, `min_wage` with required `wage_currency` and `wage_basis`, `min_hours`, `housing_known`, `confirmed_within_days`, `page`, and `page_size`. The API bounds page size at 50.
+`GET /api/v1/listings` accepts `q`, `season`, `state`, `city`, `category`, `start_from`, `end_by`, `min_wage` with required `wage_currency` and `wage_basis`, `min_hours`, `housing_known`, `confirmed_within_days`, `page`, and `page_size`. The API bounds page size at 50. `GET /api/v1/listings/locations` returns the distinct state and city pairs of current vacancies, at most 500, for filter suggestions.
 
 A previously published detail returns HTTP 410 with only a public `stale` or `unavailable` reason. The former means the confirmation TTL elapsed; the latter covers other noncurrent states without exposing operator notes.
 

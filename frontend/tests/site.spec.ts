@@ -49,8 +49,12 @@ test("dark finder keeps interactive surfaces dark and hides the filter count", a
         (dialogBox!.x + dialogBox!.width / 2),
     ),
   ).toBeLessThan(2);
-  const stateBox = await dialog.getByLabel("State").boundingBox();
-  const cityBox = await dialog.getByLabel("City").boundingBox();
+  const stateBox = await dialog
+    .getByRole("combobox", { name: "State" })
+    .boundingBox();
+  const cityBox = await dialog
+    .getByRole("combobox", { name: "City" })
+    .boundingBox();
   expect(stateBox).not.toBeNull();
   expect(cityBox).not.toBeNull();
   expect(Math.abs(favouriteBox!.x - stateBox!.x)).toBeLessThan(2);
@@ -60,7 +64,7 @@ test("dark finder keeps interactive surfaces dark and hides the filter count", a
     ),
   ).toBeLessThan(2);
 
-  const city = dialog.getByLabel("City");
+  const city = dialog.getByRole("combobox", { name: "City" });
   await city.focus();
   await expect(favourite).toBeHidden();
   await city.evaluate((input) => input.blur());
@@ -74,6 +78,31 @@ test("dark finder keeps interactive surfaces dark and hides the filter count", a
     "background-color",
     "rgb(25, 28, 25)",
   );
+});
+
+test("state and city suggest current places as you type", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  const filters = page.locator(".desktop-filters");
+  const city = filters.getByRole("combobox", { name: "City" });
+  await city.fill("alb");
+  const option = filters.getByRole("option", { name: /Albany/ });
+  await expect(option).toBeVisible();
+  await expect(option).toContainText("New York");
+  await city.press("ArrowDown");
+  await city.press("Enter");
+  await expect(page).toHaveURL(/state=New\+York/);
+  await expect(page).toHaveURL(/city=Albany/);
+  await expect(
+    page.locator(".desktop-filters").getByRole("combobox", { name: "State" }),
+  ).toHaveValue("New York");
+
+  const state = page
+    .locator(".desktop-filters")
+    .getByRole("combobox", { name: "State" });
+  await state.fill("nowhere");
+  await state.blur();
+  await expect(state).toHaveValue("New York");
 });
 
 test("theme toggle uses one short synchronized transition", async ({
@@ -186,8 +215,13 @@ test("mobile localized search and no-results state fit without overflow", async 
   await page.getByRole("button", { name: "Фильтры" }).click();
   const filters = page.getByRole("dialog", { name: "Фильтры" });
   await expect(filters).toBeVisible();
-  await filters.getByLabel("Город").fill("Missing City");
-  await filters.getByLabel("Город").press("Enter");
+  await filters.getByRole("combobox", { name: "Город" }).fill("Missing City");
+  await expect(filters.getByText("Ничего не найдено")).toBeVisible();
+  await filters.getByRole("combobox", { name: "Город" }).press("Escape");
+  await expect(filters.getByRole("combobox", { name: "Город" })).toHaveValue(
+    "",
+  );
+  await page.goto("/ru?city=Missing%20City");
   await expect(
     page.getByRole("heading", { name: "Нет вакансий" }),
   ).toBeVisible();
@@ -294,7 +328,7 @@ test("desktop finder shows inline filters, list, and vacancy preview", async ({
     filters.getByRole("dialog", { name: "Starts on or after" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await filters.getByLabel("City").fill("Albany");
+  await filters.getByRole("combobox", { name: "City" }).fill("Albany");
   await filters.getByRole("button", { name: "Show results" }).click();
   await expect(page).toHaveURL(/city=Albany/);
   await page.locator(".listing-card").first().click();
@@ -332,11 +366,11 @@ test("job finder keeps search, filters, and detail in one flow", async ({
   await page.locator(".content-wrap").click({ position: { x: 4, y: 4 } });
   await expect(page.getByRole("button", { name: "Фильтры" })).toBeVisible();
   await page.getByRole("button", { name: "Фильтры" }).click();
-  await filters.getByLabel("Город").fill("Albany");
-  await filters.getByLabel("Город").press("Enter");
+  await filters.getByRole("combobox", { name: "Город" }).fill("Albany");
+  await filters.getByRole("combobox", { name: "Город" }).press("Enter");
   await expect(page).toHaveURL(/city=Albany/);
   expect(new URL(page.url()).searchParams.get("q")).toBe("Front desk");
-  await expect(page.getByRole("button", { name: /Фильтры.*1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Фильтры.*2/ })).toBeVisible();
   await page
     .getByRole("searchbox", { name: "Поиск по вакансии или работодателю" })
     .fill("assistant");
@@ -912,8 +946,8 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   await expect(page.getByRole("dialog", { name: "Фильтры" })).toBeVisible();
   await expect(filters.getByRole("heading", { name: "Фильтры" })).toBeFocused();
   await expect(filters.getByRole("button", { name: "Отмена" })).toHaveCount(0);
-  await filters.getByLabel("Город").click();
-  await expect(filters.getByLabel("Штат")).toBeHidden();
+  await filters.getByRole("combobox", { name: "Город" }).click();
+  await expect(filters.getByRole("combobox", { name: "Штат" })).toBeHidden();
   await expect(filters.getByRole("heading", { name: "Фильтры" })).toBeHidden();
   await expect(filters.getByRole("button", { name: "Показать" })).toBeHidden();
   const cityDone = filters.locator(".focus-done > button");
@@ -929,18 +963,18 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
       })(),
     };
   });
-  await filters.getByLabel("Город").fill("Albany");
+  await filters.getByRole("combobox", { name: "Город" }).fill("Albany");
   await cityDone.click();
   await expect(filters.getByRole("button", { name: "Готово" })).toBeHidden();
-  await expect(filters.getByLabel("Штат")).toBeVisible();
+  await expect(filters.getByRole("combobox", { name: "Штат" })).toBeVisible();
   await filters.getByRole("button", { name: /Начало не раньше/ }).click();
   await expect(
     filters.getByRole("heading", { name: "Начало не раньше" }),
   ).toBeVisible();
-  await expect(filters.getByLabel("Город")).toBeHidden();
+  await expect(filters.getByRole("combobox", { name: "Город" })).toBeHidden();
   await filters.getByRole("button", { name: "Следующий месяц" }).click();
   await filters.locator(".calendar-grid button").nth(9).click();
-  await expect(filters.getByLabel("Город")).toBeVisible();
+  await expect(filters.getByRole("combobox", { name: "Город" })).toBeVisible();
   const chosen = await filters.locator('input[name="start_from"]').inputValue();
   expect(chosen).toMatch(/^\d{4}-\d{2}-10$/);
   await filters.getByRole("button", { name: /Окончание не позже/ }).click();
@@ -949,7 +983,7 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   );
   if (await earlier.count()) await expect(earlier).toBeDisabled();
   await page.keyboard.press("Escape");
-  await expect(filters.getByLabel("Город")).toBeVisible();
+  await expect(filters.getByRole("combobox", { name: "Город" })).toBeVisible();
   await filters
     .getByRole("button", { name: /Последнее подтверждение/ })
     .click();
@@ -972,7 +1006,7 @@ test("filter sheet picks dates in a calendar and focuses one field on phones", a
   expect(panelDoneStyle).toEqual(cityDoneStyle);
   await done.click();
   await expect(filters.getByRole("button", { name: "Готово" })).toBeHidden();
-  await expect(filters.getByLabel("Город")).toBeVisible();
+  await expect(filters.getByRole("combobox", { name: "Город" })).toBeVisible();
   await filters.getByLabel("Оплата от").fill("20");
   await filters.getByRole("button", { name: "Готово" }).click();
   await filters.getByRole("button", { name: /Валюта USD/ }).click();

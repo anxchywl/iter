@@ -248,6 +248,8 @@ createServer(async (request, response) => {
   ) {
     portalListings = [];
     body = { status: "published" };
+  } else if (url.pathname === "/api/v1/listings/locations") {
+    body = { items: [{ state: listing.state, city: listing.city }] };
   } else if (url.pathname === "/api/v1/listings") {
     status = url.searchParams.get("q") === "error" ? 503 : 200;
     const match =

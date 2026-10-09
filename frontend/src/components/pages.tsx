@@ -6,6 +6,7 @@ import {
   getListing,
   getReviews,
   listListings,
+  listLocations,
   pageQuery,
   parseFilters,
   plainText,
@@ -46,7 +47,10 @@ export async function DirectoryPage({
   currentParams.delete("page_size");
   const path =
     currentParams.toString() === "page=1" ? "/" : `/?${currentParams}`;
-  const result = await listListings(filters);
+  const [result, locations] = await Promise.all([
+    listListings(filters),
+    listLocations(),
+  ]);
   const hasFilters = Boolean(
     filters.q ||
     filters.season ||
@@ -71,6 +75,7 @@ export async function DirectoryPage({
         key={`${locale}:${currentParams}`}
         locale={locale}
         filters={filters}
+        locations={locations}
       />
       <section
         id="results"
