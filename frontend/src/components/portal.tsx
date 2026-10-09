@@ -1,132 +1,25 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { telegramInitData, type TelegramWindow } from "@/lib/telegram";
-
-type Role = "operator" | "provider";
-
-type OperatorSection =
-  | "offer-review"
-  | "experience-review"
-  | "issue-reports"
-  | "employers"
-  | "companies";
-
-type PortalIdentity = {
-  telegram_user_id: number | null;
-  role: Role | null;
-  organization_name: string | null;
-  organization_address: string | null;
-  organization_website_url: string | null;
-};
-
-type Organization = {
-  id: string;
-  key: string;
-  name: string;
-  website_url: string | null;
-  address: string | null;
-  status: string;
-  access_key_hint: string | null;
-  access_key_created_at: string | null;
-  version: number;
-};
-
-type IssuedAccessKey = { organizationName: string; accessKey: string };
-
-type IdentityStatus = "not_checked" | "checked" | "disputed";
-
-type Employer = {
-  id: string;
-  legal_name: string;
-  official_website_url: string;
-  identity_status: IdentityStatus;
-  identity_source_url: string | null;
-  version: number;
-};
-
-const identityLabels: Record<IdentityStatus, string> = {
-  not_checked: "Identity not checked",
-  checked: "Identity checked",
-  disputed: "Identity disputed",
-};
-
-type PortalListing = {
-  id: string;
-  employer_id: string;
-  source_identifier: string;
-  season_year: number;
-  state: string;
-  city: string;
-  location_timezone: string;
-  category: string;
-  role: string;
-  duties: string | null;
-  official_source_url: string;
-  contact_url: string;
-  work_start_date: string | null;
-  work_end_date: string | null;
-  wage_amount: string | null;
-  wage_currency: string | null;
-  wage_basis: string | null;
-  expected_hours_per_week: string | null;
-  housing_description: string | null;
-  housing_cost_amount: string | null;
-  housing_cost_currency: string | null;
-  housing_cost_basis: string | null;
-  transport_description: string | null;
-  status: string;
-  submission_status: string;
-  submission_note: string | null;
-  version: number;
-};
-
-type ModerationReview = {
-  id: string;
-  role: string;
-  season_year: number;
-  text: string | null;
-  version: number;
-};
-
-type ModerationReport = {
-  id: string;
-  item_type: "listing" | "review";
-  item_id: string;
-  reason: string;
-  explanation: string | null;
-  version: number;
-};
-
-class PortalAccessError extends Error {}
-
-function failure(status: number) {
-  if (status === 409)
-    return "This item changed or does not allow that action now. Reload and try again.";
-  if (status === 422)
-    return "Some fields are invalid. Check them and try again.";
-  if (status === 403) return "Your account cannot do this.";
-  if (status === 429) return "Too many requests. Wait a minute and try again.";
-  return "The request failed. Try again later.";
-}
-
-async function portalFetch(path: string, init?: RequestInit) {
-  const initData = telegramInitData(window as unknown as TelegramWindow);
-  const response = await fetch(`/api/portal/${path}`, {
-    ...init,
-    headers: {
-      ...(initData ? { Authorization: `tma ${initData}` } : {}),
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  if (response.status === 401) throw new PortalAccessError("expired");
-  if (!response.ok) throw new Error(failure(response.status));
-  return response.status === 204 ? null : response.json();
-}
-
-function reasonText(reason: unknown) {
-  return reason instanceof Error ? reason.message : failure(0);
-}
+import { ListingFields } from "@/components/listing-fields";
+import { CompaniesSection } from "@/components/operator-companies";
+import { VacanciesSection } from "@/components/operator-vacancies";
+import {
+  identityLabels,
+  listingPayload,
+  PortalAccessError,
+  portalFetch,
+  reasonText,
+  type Employer,
+  type IdentityStatus,
+  type ModerationReport,
+  type ModerationReview,
+  type OperatorSection,
+  type Organization,
+  type PortalIdentity,
+  type PortalListing,
+  type Role,
+} from "@/lib/portal-client";
 
 type Access =
   | { state: "loading" | "expired" | "error" }
@@ -459,44 +352,6 @@ function EmployerEditor({
   );
 }
 
-function nullable(form: FormData, name: string) {
-  const value = String(form.get(name) || "").trim();
-  return value || null;
-}
-
-function listingPayload(form: FormData) {
-  const wageAmount = nullable(form, "wage_amount");
-  const housingAmount = nullable(form, "housing_cost_amount");
-  return {
-    employer_id: String(form.get("employer_id")),
-    source_identifier: String(form.get("source_identifier")),
-    season_year: Number(form.get("season_year")),
-    state: String(form.get("state")),
-    city: String(form.get("city")),
-    location_timezone: String(form.get("location_timezone")),
-    category: String(form.get("category")),
-    role: String(form.get("role")),
-    duties: nullable(form, "duties"),
-    official_source_url: String(form.get("official_source_url")),
-    contact_url: String(form.get("contact_url")),
-    work_start_date: nullable(form, "work_start_date"),
-    work_end_date: nullable(form, "work_end_date"),
-    wage_amount: wageAmount,
-    wage_currency: wageAmount ? String(form.get("wage_currency")) : null,
-    wage_basis: wageAmount ? String(form.get("wage_basis")) : null,
-    expected_hours_per_week: nullable(form, "expected_hours_per_week"),
-    housing_description: nullable(form, "housing_description"),
-    housing_cost_amount: housingAmount,
-    housing_cost_currency: housingAmount
-      ? String(form.get("housing_cost_currency"))
-      : null,
-    housing_cost_basis: housingAmount
-      ? String(form.get("housing_cost_basis"))
-      : null,
-    transport_description: nullable(form, "transport_description"),
-  };
-}
-
 export function ProviderWorkspace() {
   const access = usePortalAccess("provider");
   const [employers, setEmployers] = useState<Employer[]>([]);
@@ -673,228 +528,11 @@ export function ProviderWorkspace() {
           ref={formRef}
           key={editing?.id || "new"}
         >
-          <fieldset className="portal-form-section portal-form-grid">
-            <legend>Offer basics</legend>
-            <label>
-              Employer
-              <select
-                name="employer_id"
-                defaultValue={editing?.employer_id}
-                required
-              >
-                <option value="">Select employer</option>
-                {employers.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.legal_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Internal reference
-              <input
-                name="source_identifier"
-                defaultValue={editing?.source_identifier}
-                required
-                maxLength={120}
-              />
-            </label>
-            <label>
-              Season
-              <input
-                name="season_year"
-                type="number"
-                min="2020"
-                max="2100"
-                defaultValue={
-                  editing?.season_year || new Date().getFullYear() + 1
-                }
-                required
-              />
-            </label>
-            <label>
-              Role
-              <input
-                name="role"
-                defaultValue={editing?.role}
-                required
-                maxLength={160}
-              />
-            </label>
-            <label>
-              State
-              <input
-                name="state"
-                defaultValue={editing?.state}
-                required
-                maxLength={80}
-              />
-            </label>
-            <label>
-              City
-              <input
-                name="city"
-                defaultValue={editing?.city}
-                required
-                maxLength={120}
-              />
-            </label>
-            <label>
-              Time zone
-              <input
-                name="location_timezone"
-                defaultValue={editing?.location_timezone || "America/New_York"}
-                required
-              />
-            </label>
-            <label>
-              Job type
-              <input
-                name="category"
-                defaultValue={editing?.category}
-                required
-                maxLength={80}
-              />
-            </label>
-            <label className="portal-span">
-              Duties
-              <textarea
-                name="duties"
-                defaultValue={editing?.duties || ""}
-                maxLength={2000}
-              />
-            </label>
-          </fieldset>
-          <fieldset className="portal-form-section portal-form-grid">
-            <legend>Source and contact</legend>
-            <label className="portal-span">
-              Official job source
-              <input
-                name="official_source_url"
-                type="url"
-                defaultValue={editing?.official_source_url}
-                required
-              />
-            </label>
-            <label className="portal-span">
-              Application or contact link
-              <input
-                name="contact_url"
-                type="url"
-                defaultValue={editing?.contact_url}
-                required
-              />
-            </label>
-          </fieldset>
-          <fieldset className="portal-form-section portal-form-grid">
-            <legend>Dates and pay</legend>
-            <label>
-              Start date
-              <input
-                name="work_start_date"
-                type="date"
-                defaultValue={editing?.work_start_date || ""}
-              />
-            </label>
-            <label>
-              End date
-              <input
-                name="work_end_date"
-                type="date"
-                defaultValue={editing?.work_end_date || ""}
-              />
-            </label>
-            <label>
-              Pay amount
-              <input
-                name="wage_amount"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue={editing?.wage_amount || ""}
-              />
-            </label>
-            <label>
-              Pay currency
-              <input
-                name="wage_currency"
-                defaultValue={editing?.wage_currency || "USD"}
-                maxLength={3}
-              />
-            </label>
-            <label>
-              Pay basis
-              <select
-                name="wage_basis"
-                defaultValue={editing?.wage_basis || "hour"}
-              >
-                <option value="hour">Hour</option>
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-              </select>
-            </label>
-            <label>
-              Hours per week
-              <input
-                name="expected_hours_per_week"
-                type="number"
-                min="0"
-                max="168"
-                step="0.25"
-                defaultValue={editing?.expected_hours_per_week || ""}
-              />
-            </label>
-          </fieldset>
-          <fieldset className="portal-form-section portal-form-grid">
-            <legend>Housing and transport</legend>
-            <label className="portal-span">
-              Housing details
-              <textarea
-                name="housing_description"
-                defaultValue={editing?.housing_description || ""}
-                maxLength={2000}
-              />
-            </label>
-            <label>
-              Housing cost
-              <input
-                name="housing_cost_amount"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue={editing?.housing_cost_amount || ""}
-              />
-            </label>
-            <label>
-              Housing currency
-              <input
-                name="housing_cost_currency"
-                defaultValue={editing?.housing_cost_currency || "USD"}
-                maxLength={3}
-              />
-            </label>
-            <label>
-              Housing basis
-              <select
-                name="housing_cost_basis"
-                defaultValue={editing?.housing_cost_basis || "week"}
-              >
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-                <option value="season">Season</option>
-              </select>
-            </label>
-            <label className="portal-span">
-              Transport details
-              <textarea
-                name="transport_description"
-                defaultValue={editing?.transport_description || ""}
-                maxLength={2000}
-              />
-            </label>
-          </fieldset>
+          <ListingFields
+            listing={editing}
+            employers={employers}
+            idPrefix="provider"
+          />
           <div className="portal-actions portal-span">
             <button type="submit">
               {editing ? "Save changes" : "Create draft"}
@@ -982,19 +620,11 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   const [reportCursor, setReportCursor] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [editingEmployer, setEditingEmployer] = useState<string | null>(null);
-  const [editingOrganization, setEditingOrganization] = useState<string | null>(
-    null,
-  );
-  const [confirmingKeyId, setConfirmingKeyId] = useState<string | null>(null);
-  const [confirmingStatusId, setConfirmingStatusId] = useState<string | null>(
-    null,
-  );
-  const [issuedKey, setIssuedKey] = useState<IssuedAccessKey | null>(null);
-  const [keyCopyStatus, setKeyCopyStatus] = useState("");
+  const [vacancyCompany, setVacancyCompany] = useState("");
+  const [createVacancyFor, setCreateVacancyFor] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const keyPanelRef = useRef<HTMLDivElement>(null);
 
   const ready = access.state === "ready";
   const load = useCallback(async () => {
@@ -1048,23 +678,19 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
   }, [ready, load]);
   useEffect(() => {
     const hash = window.location.hash.slice(1) as OperatorSection;
-    if (
-      [
-        "offer-review",
-        "experience-review",
-        "issue-reports",
-        "employers",
-        "companies",
-      ].includes(hash)
-    ) {
-      setActiveSection(hash);
-    }
+    if (sectionIds.includes(hash)) setActiveSection(hash);
   }, []);
   useEffect(() => {
-    if (!issuedKey) return;
-    setKeyCopyStatus("");
-    keyPanelRef.current?.focus();
-  }, [issuedKey]);
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 5000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  const notify = useCallback((text: string) => {
+    setError("");
+    setMessage(text);
+  }, []);
+  const clearCreateVacancy = useCallback(() => setCreateVacancyFor(null), []);
 
   async function run(work: () => Promise<unknown>, done: string) {
     setError("");
@@ -1151,103 +777,6 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
     );
   }
 
-  async function createOrganization(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    setError("");
-    setMessage("");
-    try {
-      const organization = await portalFetch("admin/organizations", {
-        method: "POST",
-        body: JSON.stringify({
-          name: String(data.get("name") || "").trim(),
-          website_url: String(data.get("website_url") || "").trim(),
-          address: String(data.get("address") || "").trim(),
-        }),
-      });
-      setIssuedKey({
-        organizationName: organization.name,
-        accessKey: organization.access_key,
-      });
-      setMessage("Company profile created.");
-      form.reset();
-      await load();
-    } catch (reason) {
-      setError(reasonText(reason));
-    }
-  }
-
-  function saveOrganization(organization: Organization, data: FormData) {
-    return run(
-      () =>
-        portalFetch(`admin/organizations/${organization.id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            expected_version: organization.version,
-            name: String(data.get("name") || "").trim(),
-            website_url: String(data.get("website_url") || "").trim(),
-            address: String(data.get("address") || "").trim(),
-          }),
-        }),
-      "Company profile updated.",
-    ).then((done) => {
-      if (done) setEditingOrganization(null);
-      return done;
-    });
-  }
-
-  async function rotateAccessKey(organization: Organization) {
-    setError("");
-    setMessage("");
-    try {
-      const result = await portalFetch(
-        `admin/organizations/${organization.id}/access-key`,
-        {
-          method: "POST",
-          body: JSON.stringify({ expected_version: organization.version }),
-        },
-      );
-      setIssuedKey({
-        organizationName: organization.name,
-        accessKey: result.access_key,
-      });
-      setConfirmingKeyId(null);
-      setMessage(
-        organization.access_key_hint
-          ? "Access key replaced. Existing company sessions were signed out."
-          : "Access key created.",
-      );
-      await load();
-    } catch (reason) {
-      setError(reasonText(reason));
-    }
-  }
-
-  function changeOrganizationStatus(organization: Organization) {
-    const status = organization.status === "active" ? "suspended" : "active";
-    return run(
-      () =>
-        portalFetch(`admin/organizations/${organization.id}/status`, {
-          method: "POST",
-          body: JSON.stringify({
-            expected_version: organization.version,
-            status,
-            reason:
-              status === "suspended"
-                ? "operator suspended company access"
-                : "operator restored company access",
-          }),
-        }),
-      status === "suspended"
-        ? "Company suspended. Existing sessions were signed out."
-        : "Company access restored.",
-    ).then((done) => {
-      if (done) setConfirmingStatusId(null);
-      return done;
-    });
-  }
-
   async function refresh() {
     setRefreshing(true);
     setMessage("");
@@ -1283,16 +812,30 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
       count: reviews.length,
     },
     { id: "issue-reports", label: "Reports", count: reports.length },
+    { id: "vacancies", label: "Vacancies" },
     { id: "employers", label: "Employers" },
     { id: "companies", label: "Companies" },
   ];
+  const navLink = (section: (typeof sectionLinks)[number]) => (
+    <a
+      key={section.id}
+      href={`#${section.id}`}
+      aria-current={activeSection === section.id ? "page" : undefined}
+      onClick={(event) => {
+        event.preventDefault();
+        showSection(section.id);
+      }}
+    >
+      <span>{section.label}</span>
+      {section.count !== undefined && (
+        <strong aria-label={`${section.count} pending`}>{section.count}</strong>
+      )}
+    </a>
+  );
   return (
-    <div className="portal-page">
-      <div className="portal-heading portal-heading-admin">
-        <div>
-          <p className="portal-kicker">iter operator</p>
-          <h1>Operator console</h1>
-        </div>
+    <div className="portal-page operator-page">
+      <div className="operator-head">
+        <h1>Operator console</h1>
         <button
           type="button"
           className="button-secondary portal-refresh"
@@ -1302,55 +845,14 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      {message && (
-        <p className="portal-notice" role="status">
-          {message}
-        </p>
-      )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
       <div className="operator-layout">
         <nav className="portal-section-nav" aria-label="Operator sections">
-          <div className="operator-sidebar-brand">
-            <span className="brand-initial">i</span>ter
-            <small>Operator console</small>
-          </div>
           <p className="portal-nav-label">Review</p>
-          {sectionLinks.slice(0, 3).map((section) => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              aria-current={activeSection === section.id ? "page" : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                showSection(section.id);
-              }}
-            >
-              <span>{section.label}</span>
-              <strong aria-label={`${section.count} pending`}>
-                {section.count}
-              </strong>
-            </a>
-          ))}
+          {sectionLinks.slice(0, 3).map(navLink)}
           <p className="portal-nav-label">Directory</p>
-          {sectionLinks.slice(3).map((section) => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              aria-current={activeSection === section.id ? "page" : undefined}
-              onClick={(event) => {
-                event.preventDefault();
-                showSection(section.id);
-              }}
-            >
-              <span>{section.label}</span>
-            </a>
-          ))}
+          {sectionLinks.slice(3).map(navLink)}
           <a className="operator-sidebar-back" href="/">
-            ← Back to vacancies
+            Back to vacancies
           </a>
         </nav>
         <div
@@ -1358,6 +860,19 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
           id="operator-workspace"
           tabIndex={-1}
         >
+          {error && (
+            <p className="form-error operator-error" role="alert">
+              {error}
+              <button
+                type="button"
+                className="text-action"
+                aria-label="Dismiss error"
+                onClick={() => setError("")}
+              >
+                Dismiss
+              </button>
+            </p>
+          )}
           {activeSection === "offer-review" && (
             <section className="portal-panel" id="offer-review">
               <h2>Offers awaiting review</h2>
@@ -1583,256 +1098,55 @@ export function OperatorConsole({ openLink }: { openLink: string | null }) {
               </div>
             </section>
           )}
+          {activeSection === "vacancies" && (
+            <VacanciesSection
+              employers={employers}
+              organizations={organizations}
+              company={vacancyCompany}
+              onCompanyChange={setVacancyCompany}
+              createFor={createVacancyFor}
+              onCreateHandled={clearCreateVacancy}
+              onOpenReview={() => showSection("offer-review")}
+              notify={notify}
+              onChanged={() => void load()}
+            />
+          )}
           {activeSection === "companies" && (
-            <section className="portal-panel" id="companies">
-              <h2>Companies</h2>
-              <p>
-                Create the company profile first. A private access key is
-                generated automatically so the company can manage its offers in
-                any browser.
-              </p>
-              {issuedKey && (
-                <div
-                  className="portal-key"
-                  role="region"
-                  aria-label="New company access key"
-                  tabIndex={-1}
-                  ref={keyPanelRef}
-                >
-                  <div>
-                    <strong>Access key for {issuedKey.organizationName}</strong>
-                    <p>Copy it now. The full key will not be shown again.</p>
-                  </div>
-                  <code>{issuedKey.accessKey}</code>
-                  <div className="portal-actions">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard
-                          .writeText(issuedKey.accessKey)
-                          .then(
-                            () => setKeyCopyStatus("Copied"),
-                            () =>
-                              setError(
-                                "Could not copy. Select the key and copy it manually.",
-                              ),
-                          );
-                      }}
-                    >
-                      {keyCopyStatus || "Copy key"}
-                    </button>
-                    <span className="portal-hint" aria-live="polite">
-                      {keyCopyStatus && "Access key copied."}
-                    </span>
-                    <button
-                      type="button"
-                      className="button-secondary"
-                      onClick={() => setIssuedKey(null)}
-                    >
-                      Done
-                    </button>
-                  </div>
-                </div>
-              )}
-              <form
-                className="portal-form portal-form-grid"
-                onSubmit={createOrganization}
-              >
-                <label>
-                  Company name
-                  <input name="name" required maxLength={160} />
-                </label>
-                <label>
-                  Company website
-                  <input
-                    name="website_url"
-                    type="url"
-                    placeholder="https://"
-                    required
-                  />
-                </label>
-                <label className="portal-span">
-                  Business address
-                  <textarea name="address" required maxLength={300} rows={2} />
-                </label>
-                <div className="portal-actions portal-span">
-                  <button type="submit">Create company and access key</button>
-                </div>
-              </form>
-              <div className="portal-list">
-                {organizations.length === 0 && <p>No companies yet.</p>}
-                {organizations.map((organization) => (
-                  <article key={organization.id} className="portal-item">
-                    {editingOrganization === organization.id ? (
-                      <form
-                        className="portal-form portal-form-grid portal-span"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void saveOrganization(
-                            organization,
-                            new FormData(event.currentTarget),
-                          );
-                        }}
-                      >
-                        <label>
-                          Company name
-                          <input
-                            name="name"
-                            defaultValue={organization.name}
-                            required
-                            maxLength={160}
-                          />
-                        </label>
-                        <label>
-                          Company website
-                          <input
-                            name="website_url"
-                            type="url"
-                            defaultValue={organization.website_url || ""}
-                            required
-                          />
-                        </label>
-                        <label className="portal-span">
-                          Business address
-                          <textarea
-                            name="address"
-                            defaultValue={organization.address || ""}
-                            required
-                            maxLength={300}
-                            rows={2}
-                          />
-                        </label>
-                        <div className="portal-actions portal-span">
-                          <button type="submit">Save company</button>
-                          <button
-                            type="button"
-                            className="button-secondary"
-                            onClick={() => setEditingOrganization(null)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <>
-                        <div>
-                          <span className="status-chip">
-                            {organization.status}
-                          </span>
-                          <h3>{organization.name}</h3>
-                          <p>
-                            {organization.address || "Business address needed"}
-                          </p>
-                          {organization.website_url ? (
-                            <a
-                              href={organization.website_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {organization.website_url}
-                            </a>
-                          ) : (
-                            <p className="form-error">Company website needed</p>
-                          )}
-                          <p className="portal-hint">
-                            {organization.access_key_hint
-                              ? `Access key active · ends in ${organization.access_key_hint}`
-                              : "No access key issued"}
-                          </p>
-                        </div>
-                        <div className="portal-actions">
-                          <button
-                            type="button"
-                            className="button-secondary"
-                            onClick={() =>
-                              setEditingOrganization(organization.id)
-                            }
-                          >
-                            Edit profile
-                          </button>
-                          {confirmingKeyId === organization.id ? (
-                            <>
-                              <button
-                                type="button"
-                                className="button-danger"
-                                onClick={() =>
-                                  void rotateAccessKey(organization)
-                                }
-                              >
-                                Confirm replacement
-                              </button>
-                              <button
-                                type="button"
-                                className="button-secondary"
-                                onClick={() => setConfirmingKeyId(null)}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              className="button-secondary"
-                              onClick={() =>
-                                setConfirmingKeyId(organization.id)
-                              }
-                            >
-                              {organization.access_key_hint
-                                ? "Replace access key"
-                                : "Create access key"}
-                            </button>
-                          )}
-                          {organization.status === "active" &&
-                          confirmingStatusId === organization.id ? (
-                            <>
-                              <button
-                                type="button"
-                                className="button-danger"
-                                onClick={() =>
-                                  void changeOrganizationStatus(organization)
-                                }
-                              >
-                                Confirm suspension
-                              </button>
-                              <button
-                                type="button"
-                                className="button-secondary"
-                                onClick={() => setConfirmingStatusId(null)}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              className={
-                                organization.status === "active"
-                                  ? "button-danger"
-                                  : "button-secondary"
-                              }
-                              onClick={() =>
-                                organization.status === "active"
-                                  ? setConfirmingStatusId(organization.id)
-                                  : void changeOrganizationStatus(organization)
-                              }
-                            >
-                              {organization.status === "active"
-                                ? "Suspend access"
-                                : "Restore access"}
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </section>
+            <CompaniesSection
+              organizations={organizations}
+              notify={notify}
+              onChanged={load}
+              onShowVacancies={(organizationId) => {
+                setVacancyCompany(organizationId);
+                showSection("vacancies");
+              }}
+              onCreateVacancy={(organizationId) => {
+                setVacancyCompany(organizationId);
+                setCreateVacancyFor(organizationId);
+                showSection("vacancies");
+              }}
+            />
           )}
         </div>
       </div>
+      <p
+        className="operator-toast"
+        role="status"
+        data-visible={message ? "" : undefined}
+      >
+        {message}
+      </p>
     </div>
   );
 }
+
+const sectionIds: OperatorSection[] = [
+  "offer-review",
+  "experience-review",
+  "issue-reports",
+  "vacancies",
+  "employers",
+  "companies",
+];
 
 const reasonPrompt = "Record the reason for this decision.";

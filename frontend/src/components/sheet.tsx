@@ -46,6 +46,7 @@ export function Sheet({
   className = "",
   onEscape,
   onClosed,
+  onRequestClose,
   children,
 }: {
   sheet: SheetControl;
@@ -54,9 +55,15 @@ export function Sheet({
   className?: string;
   onEscape?: () => boolean;
   onClosed?: () => void;
+  onRequestClose?: () => boolean;
   children: ReactNode;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
+  // a false return keeps the sheet open, so a form can ask before discarding edits
+  const requestClose = () => {
+    if (onRequestClose && !onRequestClose()) return;
+    sheet.close();
+  };
   useFocusMode(sheet.ref, sheet.ref);
 
   useEffect(() => {
@@ -108,7 +115,7 @@ export function Sheet({
       delete node.dataset.dragging;
       node.style.removeProperty("transform");
       const speed = distance / Math.max(1, performance.now() - startTime);
-      if (distance > 90 || (distance > 24 && speed > 0.6)) sheet.close();
+      if (distance > 90 || (distance > 24 && speed > 0.6)) requestClose();
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end);
@@ -121,11 +128,11 @@ export function Sheet({
       ref={sheet.ref}
       aria-labelledby={titleId}
       onClick={(event) => {
-        if (event.target === sheet.ref.current) sheet.close();
+        if (event.target === sheet.ref.current) requestClose();
       }}
       onCancel={(event) => {
         event.preventDefault();
-        if (!onEscape?.()) sheet.close();
+        if (!onEscape?.()) requestClose();
       }}
       onClose={() => {
         const node = sheet.ref.current;
@@ -144,7 +151,7 @@ export function Sheet({
           type="button"
           className="sheet-close"
           aria-label="Close"
-          onClick={sheet.close}
+          onClick={requestClose}
         >
           <svg
             viewBox="0 0 24 24"

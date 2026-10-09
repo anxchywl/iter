@@ -52,6 +52,60 @@ let emptyFeed = false;
 let portalListings = [];
 const organizations = [];
 
+function seedAdminListings() {
+  const base = {
+    employer_id: "employer-1",
+    employer_name: "Example Employer (fictional)",
+    organization_id: null,
+    organization_name: null,
+    season_year: 2027,
+    state: "New York",
+    city: "Albany",
+    location_timezone: "America/New_York",
+    category: "Hospitality",
+    duties: null,
+    official_source_url: "https://example.com/jobs/front-desk",
+    contact_url: "https://example.com/jobs/apply",
+    work_start_date: "2027-06-01",
+    work_end_date: "2027-08-30",
+    wage_amount: null,
+    wage_currency: null,
+    wage_basis: null,
+    expected_hours_per_week: null,
+    housing_description: null,
+    housing_cost_amount: null,
+    housing_cost_currency: null,
+    housing_cost_basis: null,
+    transport_description: null,
+    submission_note: null,
+    last_confirmed_at: "2026-09-27T10:00:00Z",
+    version: 1,
+  };
+  return [
+    {
+      ...base,
+      id: "admin-live",
+      source_identifier: "live-1",
+      role: "Front desk assistant",
+      status: "published",
+      submission_status: "approved",
+      effective_status: "published",
+      published_at: "2026-09-27T10:00:00Z",
+    },
+    {
+      ...base,
+      id: "admin-draft",
+      source_identifier: "draft-1",
+      role: "Night auditor",
+      status: "draft",
+      submission_status: "draft",
+      effective_status: "draft",
+      published_at: null,
+    },
+  ];
+}
+let adminListings = seedAdminListings();
+
 async function jsonBody(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -189,6 +243,87 @@ createServer(async (request, response) => {
     const { expected_version: _, ...fields } = payload;
     Object.assign(target, fields, { version: target.version + 1 });
     body = target;
+  } else if (url.pathname === "/__mock/reset-admin") {
+    adminListings = seedAdminListings();
+    body = { reset: true };
+  } else if (
+    request.method === "GET" &&
+    url.pathname === "/api/v1/admin/listings"
+  ) {
+    const wanted = url.searchParams.get("status") || "open";
+    const query = (url.searchParams.get("q") || "").toLowerCase();
+    const company = url.searchParams.get("organization_id");
+    body = {
+      items: adminListings.filter(
+        (item) =>
+          (wanted === "all" ||
+            (wanted === "open"
+              ? item.effective_status !== "closed"
+              : item.effective_status === wanted)) &&
+          (!query || item.role.toLowerCase().includes(query)) &&
+          (!company || item.organization_id === company),
+      ),
+      next_cursor: null,
+    };
+  } else if (
+    request.method === "POST" &&
+    url.pathname === "/api/v1/admin/listings"
+  ) {
+    const payload = await jsonBody(request);
+    const organization = organizations.find(
+      (item) => item.id === payload.organization_id,
+    );
+    adminListings.unshift({
+      ...payload,
+      id: `admin-created-${adminListings.length + 1}`,
+      employer_name: "Example Employer (fictional)",
+      organization_name: organization?.name || null,
+      status: "draft",
+      submission_status: "draft",
+      effective_status: "draft",
+      published_at: null,
+      last_confirmed_at: null,
+      submission_note: null,
+      version: 1,
+    });
+    status = 201;
+    body = adminListings[0];
+  } else if (
+    /^\/api\/v1\/admin\/listings\/[^/]+(\/[^/]+)?$/.test(url.pathname)
+  ) {
+    const [, , , , , listingId, action] = url.pathname.split("/");
+    const target = adminListings.find((item) => item.id === listingId);
+    const payload = request.method === "GET" ? {} : await jsonBody(request);
+    if (!target) {
+      status = 404;
+      body = { detail: "Not found" };
+    } else if (request.method === "GET") {
+      body = target;
+    } else if (payload.expected_version !== target.version) {
+      status = 409;
+      body = { detail: "Conflict" };
+    } else if (request.method === "PUT") {
+      Object.assign(target, payload.content, { version: target.version + 1 });
+      body = target;
+    } else if (action === "delete") {
+      if (target.status !== "draft") {
+        status = 409;
+        body = { detail: "Conflict" };
+      } else {
+        adminListings = adminListings.filter((item) => item !== target);
+        body = { deleted: target.id };
+      }
+    } else {
+      const next = { pause: "paused", republish: "published", close: "closed" }[
+        action
+      ];
+      Object.assign(target, {
+        status: next,
+        effective_status: next,
+        version: target.version + 1,
+      });
+      body = target;
+    }
   } else if (url.pathname === "/__mock/empty-feed") {
     emptyFeed = url.searchParams.get("on") === "1";
     body = { emptyFeed };

@@ -694,12 +694,64 @@ test("provider submits an offer and an operator publishes it", async ({
   await page.getByRole("button", { name: "Confirm replacement" }).click();
   await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
   await page.getByRole("button", { name: "Suspend access" }).click();
-  await page.getByRole("button", { name: "Confirm suspension" }).click();
+  const suspend = page.getByRole("dialog", { name: "Suspend company access" });
+  await suspend.getByRole("button", { name: "Suspend access" }).click();
+  await expect(
+    suspend.getByText("Record the reason for this change."),
+  ).toBeVisible();
+  await suspend.getByLabel("Reason").fill("Contract ended");
+  await suspend.getByRole("button", { name: "Suspend access" }).click();
   await expect(
     page.getByText("Company suspended. Existing sessions were signed out."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Restore access" }).click();
+  const restore = page.getByRole("dialog", { name: "Restore company access" });
+  await restore.getByLabel("Reason").fill("Contract renewed");
+  await restore.getByRole("button", { name: "Restore access" }).click();
   await expect(page.getByText("Company access restored.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit profile" }).click();
+  const companyEditor = page.getByRole("dialog", { name: "Edit company" });
+  await companyEditor.getByLabel("Company website").fill("http://agency");
+  await companyEditor.getByRole("button", { name: "Save company" }).click();
+  await expect(
+    companyEditor.getByText("Use a secure https:// link."),
+  ).toBeVisible();
+  await expect(companyEditor.getByLabel("Company website")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    companyEditor.getByText("Discard your unsaved changes?"),
+  ).toBeVisible();
+  await companyEditor.getByRole("button", { name: "Discard" }).click();
+  await expect(companyEditor).toBeHidden();
+
+  await page.getByRole("button", { name: "Add vacancy" }).click();
+  const creator = page.getByRole("dialog", { name: "Add vacancy" });
+  await expect(creator.getByLabel("Company")).toHaveValue("org-1");
+  await creator.getByLabel("Employer").selectOption("employer-1");
+  await creator.getByLabel("Internal reference").fill("agency-role");
+  await creator.getByLabel("Role").fill("Pool attendant");
+  await creator.getByLabel("State").fill("Maine");
+  await creator.getByLabel("City").fill("Portland");
+  await creator.getByLabel("Job type").fill("Recreation");
+  await creator
+    .getByLabel("Official job source")
+    .fill("https://agency.example.com/pool");
+  await creator
+    .getByLabel("Application or contact link")
+    .fill("https://agency.example.com/apply");
+  await creator.getByRole("button", { name: "Create draft" }).click();
+  await expect(
+    page.getByText("Draft created. The company can now edit and submit it."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Pool attendant" }),
+  ).toBeVisible();
+  await expect(page.locator(".operator-filter-fields select")).toHaveValue(
+    "org-1",
+  );
+  await page.locator(".operator-filter-fields select").selectOption("");
+  await operatorSections.getByRole("link", { name: "Companies" }).click();
   await expect(
     page.getByRole("navigation", { name: "Operator sections" }),
   ).toBeVisible();
@@ -737,6 +789,141 @@ test("provider submits an offer and an operator publishes it", async ({
   await editor.getByRole("button", { name: "Save employer" }).click();
   await expect(page.getByText("Employer updated.")).toBeVisible();
   await expect(seabrook.getByText("Identity checked")).toBeVisible();
+});
+
+test("operator edits, hides, republishes, and deletes vacancies", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:18017/__mock/reset-admin");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(telegramLaunch("/admin", 1));
+  const sections = page.getByRole("navigation", { name: "Operator sections" });
+  await sections.getByRole("link", { name: "Vacancies", exact: true }).click();
+  await expect(page).toHaveURL(/#vacancies$/);
+  const live = page.locator(".operator-vacancy", {
+    hasText: "Front desk assistant",
+  });
+  await expect(live.locator(".status-chip")).toHaveText("Live");
+  await expect(
+    page.locator(".operator-vacancy", { hasText: "Night auditor" }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit Front desk assistant" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit vacancy" });
+  await expect(editor.getByText("This vacancy is live.")).toBeVisible();
+  await expect(editor.getByLabel("Internal reference")).toHaveAttribute(
+    "readonly",
+    "",
+  );
+  await editor
+    .getByLabel("Application or contact link")
+    .fill("https://example.com/jobs/new-apply");
+  await editor.getByLabel("Role").fill("Senior front desk assistant");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    editor.getByText("Say why the source or contact link changed."),
+  ).toBeVisible();
+  await editor.getByLabel("Reason for this change").fill("New apply page");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Changes are live.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Senior front desk assistant" }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Hide Senior front desk assistant" })
+    .click();
+  const hide = page.getByRole("dialog", { name: "Hide vacancy" });
+  await hide.getByRole("button", { name: "Hide vacancy" }).click();
+  await expect(
+    hide.getByText("Record the reason for this decision."),
+  ).toBeVisible();
+  await hide.getByLabel("Reason").fill("Employer paused hiring");
+  await hide.getByRole("button", { name: "Hide vacancy" }).click();
+  await expect(page.getByText("Vacancy hidden.")).toBeVisible();
+  await expect(live.locator(".status-chip")).toHaveText("Hidden");
+
+  await page
+    .getByRole("button", { name: "Republish Senior front desk assistant" })
+    .click();
+  const republish = page.getByRole("dialog", {
+    name: "Confirm and republish",
+  });
+  await republish
+    .getByLabel("Where you confirmed it")
+    .fill("https://127.0.0.1/jobs");
+  await republish.getByLabel("Reason").fill("Employer reopened the role");
+  await republish.getByRole("button", { name: "Republish" }).click();
+  await expect(
+    republish.getByText(
+      "Use a public website address, not an IP address or local name.",
+    ),
+  ).toBeVisible();
+  await republish
+    .getByLabel("Where you confirmed it")
+    .fill("https://example.com/jobs/front-desk");
+  await republish.getByRole("button", { name: "Republish" }).click();
+  await expect(
+    page.getByText("Vacancy confirmed and live again."),
+  ).toBeVisible();
+  await expect(live.locator(".status-chip")).toHaveText("Live");
+
+  await expect(
+    page.getByRole("button", { name: "Delete Senior front desk assistant" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Delete Night auditor" }).click();
+  const remove = page.getByRole("dialog", { name: "Delete draft" });
+  await remove.getByLabel("Reason").fill("Duplicate draft");
+  await remove.getByRole("button", { name: "Delete draft" }).click();
+  await expect(page.getByText("Draft deleted.")).toBeVisible();
+  await expect(
+    page.locator(".operator-vacancy", { hasText: "Night auditor" }),
+  ).toHaveCount(0);
+
+  await page
+    .locator(".operator-chips")
+    .getByRole("button", { name: "Drafts" })
+    .click();
+  await expect(
+    page.getByText("No vacancies match these filters."),
+  ).toBeVisible();
+});
+
+test("operator console fits phones with a section strip and guarded editor", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:18017/__mock/reset-admin");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(telegramLaunch("/admin", 1));
+  const sections = page.getByRole("navigation", { name: "Operator sections" });
+  await expect(sections).toBeVisible();
+  expect(
+    await sections.evaluate((nav) => getComputedStyle(nav).flexDirection),
+  ).toBe("row");
+  await expect(page.locator(".operator-sidebar-back")).toBeHidden();
+  await sections.getByRole("link", { name: "Vacancies", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Front desk assistant" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
+
+  await page.getByRole("button", { name: "Edit Front desk assistant" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit vacancy" });
+  await editor.getByLabel("Role").fill("Changed role");
+  await page.keyboard.press("Escape");
+  await expect(editor.getByText("Discard your unsaved changes?")).toBeVisible();
+  await editor.getByRole("button", { name: "Keep editing" }).click();
+  await expect(editor.getByLabel("Role")).toHaveValue("Changed role");
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  await editor.getByRole("button", { name: "Discard" }).click();
+  await expect(editor).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Front desk assistant" }),
+  ).toBeVisible();
 });
 
 test("an empty feed centers one message and keeps the footer at the bottom", async ({
