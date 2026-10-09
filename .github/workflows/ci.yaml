@@ -78,16 +78,11 @@ jobs:
           for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
             curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
           done
+          echo "stored registry logins: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
+          docker logout
+          echo "after logout: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
           time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
           sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
-      - name: Sign in to Docker Hub
-        # raises the image pull limit; forks and repositories without the settings pull anonymously
-        if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        continue-on-error: true
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Scan secrets and validate configuration
         env:
           CI: "true"
@@ -119,16 +114,11 @@ jobs:
           for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
             curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
           done
+          echo "stored registry logins: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
+          docker logout
+          echo "after logout: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
           time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
           sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
-      - name: Sign in to Docker Hub
-        # raises the image pull limit; forks and repositories without the settings pull anonymously
-        if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        continue-on-error: true
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Verify backend and database
         env:
           CI: "true"
@@ -185,16 +175,11 @@ jobs:
           for url in https://mirror.gcr.io/v2/ https://mirror.gcr.io/v2/library/postgres/manifests/sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull"; do
             curl -sS -o /dev/null -w "%{http_code} %{time_total}s %{remote_ip} $url\n" --max-time 20 -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" "$url" || echo "curl failed for $url"
           done
+          echo "stored registry logins: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
+          docker logout
+          echo "after logout: $(jq -c '.auths // {} | keys' ~/.docker/config.json 2>/dev/null || echo none)"
           time docker pull -q postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f || true
           sudo journalctl -u docker --no-pager --since "-2min" | grep -iE "mirror|trying to pull|fallback|error|status" | tail -40 || true
-      - name: Sign in to Docker Hub
-        # raises the image pull limit; forks and repositories without the settings pull anonymously
-        if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        continue-on-error: true
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Verify browser flows and local stack
         env:
           CI: "true"
