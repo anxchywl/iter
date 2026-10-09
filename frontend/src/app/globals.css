@@ -117,6 +117,23 @@ p {
   background: var(--canvas);
 }
 
+.app-shell:has(.directory-page),
+.app-shell:has(.detail-wrap) {
+  width: 100%;
+}
+
+@media (max-width: 899px) {
+  .app-shell:has(.directory-page) .header-inner,
+  .app-shell:has(.directory-page) .footer-inner,
+  .app-shell:has(.detail-wrap) .header-inner,
+  .app-shell:has(.detail-wrap) .footer-inner,
+  .content-wrap.directory-page,
+  .content-wrap.detail-wrap {
+    width: min(100%, 560px);
+    margin-inline: auto;
+  }
+}
+
 .app-shell:has(.portal-page) {
   width: min(100%, 1220px);
 }
