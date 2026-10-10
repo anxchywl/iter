@@ -610,6 +610,7 @@ test("Telegram launch links hide while company access stays available", async ({
 
 test("provider submits an offer and an operator publishes it", async ({
   page,
+  request,
 }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -653,6 +654,7 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("Offer submitted for review.")).toBeVisible();
   await expect(page.getByText("pending", { exact: true })).toBeVisible();
 
+  await request.get("http://127.0.0.1:18017/__mock/add-incomplete-company");
   await page.goto(telegramLaunch("/admin", 1));
   await page.setViewportSize({ width: 375, height: 812 });
   const operatorSections = page.getByRole("navigation", {
@@ -685,6 +687,24 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("No pending reports.")).toBeVisible();
 
   await operatorSections.getByRole("link", { name: "Companies" }).click();
+  const emka = page.locator(".operator-company").filter({ hasText: "Emka" });
+  await expect(emka.getByText("No access key")).toBeVisible();
+  await emka.getByRole("button", { name: "Complete profile" }).click();
+  const emkaEditor = page.getByRole("dialog", { name: "Edit company" });
+  await emkaEditor
+    .getByLabel("Company website")
+    .fill("https://emka.example.com");
+  await emkaEditor
+    .getByLabel("Business address")
+    .fill("1 Example Street, Astana");
+  await emkaEditor.getByRole("button", { name: "Save company" }).click();
+  await expect(
+    emka.getByRole("button", { name: "Create access key" }),
+  ).toBeEnabled();
+  await emka.getByRole("button", { name: "Create access key" }).click();
+  await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+
   await page.getByLabel("Company name").fill("Example Agency");
   await page.getByLabel("Company website").fill("https://agency.example.com");
   await page
@@ -714,39 +734,53 @@ test("provider submits an offer and an operator publishes it", async ({
     320, 375, 640, 768, 899, 900, 1024, 1099, 1100, 1280, 1440, 1920,
   ]) {
     await page.setViewportSize({ width, height: 900 });
-    const layout = await page.locator(".operator-company").evaluate((card) => {
-      const cardBounds = card.getBoundingClientRect();
-      const actionsBounds = card
-        .querySelector(".operator-company-actions")!
-        .getBoundingClientRect();
-      return {
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-        cardLeft: cardBounds.left,
-        cardRight: cardBounds.right,
-        actionsLeft: actionsBounds.left,
-        actionsRight: actionsBounds.right,
-        columnCount:
-          getComputedStyle(card).gridTemplateColumns.split(" ").length,
-      };
-    });
-    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
-    expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.actionsLeft).toBeGreaterThanOrEqual(layout.cardLeft);
-    expect(layout.actionsRight).toBeLessThanOrEqual(layout.cardRight);
-    expect(layout.columnCount).toBe(width >= 1100 ? 2 : 1);
+    const layouts = await page
+      .locator(".operator-company")
+      .evaluateAll((cards) =>
+        cards.map((card) => {
+          const cardBounds = card.getBoundingClientRect();
+          const actionsBounds = card
+            .querySelector(".operator-company-actions")!
+            .getBoundingClientRect();
+          return {
+            cardLeft: cardBounds.left,
+            cardRight: cardBounds.right,
+            actionsLeft: actionsBounds.left,
+            actionsRight: actionsBounds.right,
+            columnCount:
+              getComputedStyle(card).gridTemplateColumns.split(" ").length,
+          };
+        }),
+      );
+    const documentWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth,
+    );
+    expect(documentWidth).toBeLessThanOrEqual(width);
+    for (const layout of layouts) {
+      expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
+      expect(layout.cardRight).toBeLessThanOrEqual(width);
+      expect(layout.actionsLeft).toBeGreaterThanOrEqual(layout.cardLeft);
+      expect(layout.actionsRight).toBeLessThanOrEqual(layout.cardRight);
+      expect(layout.columnCount).toBe(width >= 1100 ? 2 : 1);
+    }
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByText("500 Summer Avenue, Boston, MA")).toBeVisible();
-  await page.getByRole("button", { name: "Replace access key" }).click();
+  const exampleAgency = page
+    .locator(".operator-company")
+    .filter({ hasText: "Example Agency" });
+  await exampleAgency
+    .getByRole("button", { name: "Replace access key" })
+    .click();
   await expect(
     page.getByText(
       "Replacing this key will sign out all current company sessions. The new key will be shown once.",
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Confirm replacement" }).click();
+  await exampleAgency
+    .getByRole("button", { name: "Confirm replacement" })
+    .click();
   await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -766,7 +800,7 @@ test("provider submits an offer and an operator publishes it", async ({
   ).toHaveText(
     "Clipboard unavailable. Select the key above and copy it manually.",
   );
-  await page.getByRole("button", { name: "Suspend access" }).click();
+  await exampleAgency.getByRole("button", { name: "Suspend access" }).click();
   const suspend = page.getByRole("dialog", { name: "Suspend company access" });
   await suspend.getByRole("button", { name: "Suspend access" }).click();
   await expect(
@@ -777,13 +811,13 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(
     page.getByText("Company suspended. Existing sessions were signed out."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Restore access" }).click();
+  await exampleAgency.getByRole("button", { name: "Restore access" }).click();
   const restore = page.getByRole("dialog", { name: "Restore company access" });
   await restore.getByLabel("Reason").fill("Contract renewed");
   await restore.getByRole("button", { name: "Restore access" }).click();
   await expect(page.getByText("Company access restored.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit profile" }).click();
+  await exampleAgency.getByRole("button", { name: "Edit profile" }).click();
   const companyEditor = page.getByRole("dialog", { name: "Edit company" });
   await companyEditor.getByLabel("Company website").fill("http://agency");
   await companyEditor.getByRole("button", { name: "Save company" }).click();
@@ -798,9 +832,9 @@ test("provider submits an offer and an operator publishes it", async ({
   await companyEditor.getByRole("button", { name: "Discard" }).click();
   await expect(companyEditor).toBeHidden();
 
-  await page.getByRole("button", { name: "Add vacancy" }).click();
+  await exampleAgency.getByRole("button", { name: "Add vacancy" }).click();
   const creator = page.getByRole("dialog", { name: "Add vacancy" });
-  await expect(creator.getByLabel("Company")).toHaveValue("org-1");
+  await expect(creator.getByLabel("Company")).toHaveValue("org-2");
   await creator.getByLabel("Employer").selectOption("employer-1");
   await creator.getByLabel("Internal reference").fill("agency-role");
   await creator.getByLabel("Role").fill("Pool attendant");
@@ -821,7 +855,7 @@ test("provider submits an offer and an operator publishes it", async ({
     page.getByRole("heading", { name: "Pool attendant" }),
   ).toBeVisible();
   await expect(page.locator(".operator-filter-fields select")).toHaveValue(
-    "org-1",
+    "org-2",
   );
   await page.locator(".operator-filter-fields select").selectOption("");
   await operatorSections.getByRole("link", { name: "Companies" }).click();

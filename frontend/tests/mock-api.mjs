@@ -243,6 +243,20 @@ createServer(async (request, response) => {
     const { expected_version: _, ...fields } = payload;
     Object.assign(target, fields, { version: target.version + 1 });
     body = target;
+  } else if (url.pathname === "/__mock/add-incomplete-company") {
+    organizations.push({
+      id: "org-emka",
+      key: "company-emka",
+      name: "Emka",
+      website_url: null,
+      address: null,
+      status: "active",
+      access_key_hint: null,
+      access_key_created_at: null,
+      version: 1,
+      listing_counts: {},
+    });
+    body = { created: true };
   } else if (url.pathname === "/__mock/reset-admin") {
     adminListings = seedAdminListings();
     body = { reset: true };

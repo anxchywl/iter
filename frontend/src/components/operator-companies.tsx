@@ -357,16 +357,18 @@ export function CompaniesSection({
                       Cancel
                     </button>
                   </>
+                ) : incomplete ? (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => setEditing(organization)}
+                  >
+                    Complete profile
+                  </button>
                 ) : (
                   <button
                     type="button"
                     className="button-secondary"
-                    disabled={incomplete}
-                    title={
-                      incomplete
-                        ? "Add the website and address first"
-                        : undefined
-                    }
                     onClick={() =>
                       organization.access_key_hint
                         ? setConfirmingKey(organization.id)
