@@ -611,6 +611,15 @@ test("Telegram launch links hide while company access stays available", async ({
 test("provider submits an offer and an operator publishes it", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) =>
+          sessionStorage.setItem("test-copied-access-key", text),
+      },
+    });
+  });
   await page.goto("/portal/login");
   await page.getByLabel("Company access key").fill("company-test-key");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -645,9 +654,13 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(page.getByText("pending", { exact: true })).toBeVisible();
 
   await page.goto(telegramLaunch("/admin", 1));
+  await page.setViewportSize({ width: 375, height: 812 });
   const operatorSections = page.getByRole("navigation", {
     name: "Operator sections",
   });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
   await expect(
     operatorSections.getByRole("link", { name: "Offers 1 pending" }),
   ).toHaveAttribute("aria-current", "page");
@@ -688,11 +701,71 @@ test("provider submits an offer and an operator publishes it", async ({
   await expect(
     page.getByText("The full key will not be shown again."),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Copy key" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "New company access key" })
+      .getByRole("status"),
+  ).toHaveText("Access key copied.");
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("test-copied-access-key")),
+  ).toBe("iter_company_mock-key");
+  for (const width of [
+    320, 375, 640, 768, 899, 900, 1024, 1099, 1100, 1280, 1440, 1920,
+  ]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await page.locator(".operator-company").evaluate((card) => {
+      const cardBounds = card.getBoundingClientRect();
+      const actionsBounds = card
+        .querySelector(".operator-company-actions")!
+        .getBoundingClientRect();
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        cardLeft: cardBounds.left,
+        cardRight: cardBounds.right,
+        actionsLeft: actionsBounds.left,
+        actionsRight: actionsBounds.right,
+        columnCount:
+          getComputedStyle(card).gridTemplateColumns.split(" ").length,
+      };
+    });
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
+    expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.actionsLeft).toBeGreaterThanOrEqual(layout.cardLeft);
+    expect(layout.actionsRight).toBeLessThanOrEqual(layout.cardRight);
+    expect(layout.columnCount).toBe(width >= 1100 ? 2 : 1);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByText("500 Summer Avenue, Boston, MA")).toBeVisible();
   await page.getByRole("button", { name: "Replace access key" }).click();
+  await expect(
+    page.getByText(
+      "Replacing this key will sign out all current company sessions. The new key will be shown once.",
+    ),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Confirm replacement" }).click();
   await expect(page.getByText("iter_company_new-mock-key")).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard permission denied");
+        },
+      },
+    });
+  });
+  await page.getByRole("button", { name: "Copy key" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "New company access key" })
+      .getByRole("status"),
+  ).toHaveText(
+    "Clipboard unavailable. Select the key above and copy it manually.",
+  );
   await page.getByRole("button", { name: "Suspend access" }).click();
   const suspend = page.getByRole("dialog", { name: "Suspend company access" });
   await suspend.getByRole("button", { name: "Suspend access" }).click();

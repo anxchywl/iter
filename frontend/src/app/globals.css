@@ -3816,9 +3816,9 @@ html:has(dialog[open]) {
 }
 
 .operator-page {
-  width: min(100%, 720px);
+  width: min(100%, 1360px);
   margin: 0 auto;
-  padding: 1.25rem 1rem 4rem;
+  padding: 1.25rem 1rem 3rem;
 }
 
 .content-wrap:has(.operator-page) {
@@ -3878,18 +3878,19 @@ html:has(dialog[open]) {
 @media (min-width: 900px) {
   .app-shell:has(.operator-page) .header-inner,
   .app-shell:has(.operator-page) .footer-inner {
-    width: min(100%, 1360px);
+    width: min(100%, 1440px);
     margin-inline: auto;
     padding-inline: 2rem;
   }
 
   .operator-page {
-    width: min(100%, 1360px);
-    padding: 1.5rem 2rem 4rem;
+    width: min(100%, 1440px);
+    padding: 1.25rem 2rem 3rem;
   }
 
   .operator-page .operator-layout {
     grid-template-columns: 220px minmax(0, 1fr);
+    gap: 1rem;
   }
 
   .operator-page .portal-section-nav {
@@ -3900,6 +3901,83 @@ html:has(dialog[open]) {
 
   .operator-sidebar-back {
     margin-top: 0.75rem;
+  }
+}
+
+.operator-page .portal-panel {
+  padding: 1.2rem;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.operator-page .portal-item {
+  padding: 0.85rem;
+  border-radius: 8px;
+}
+
+.operator-page .operator-company {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
+.operator-company-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.operator-company-heading .status-chip {
+  flex: none;
+  margin: 0;
+}
+
+.operator-company-details,
+.operator-company-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 1rem;
+}
+
+.operator-company-details p,
+.operator-company-summary p {
+  margin: 0;
+}
+
+.operator-company-details > *,
+.operator-company-summary > * {
+  min-width: 0;
+}
+
+.operator-page .operator-company > .operator-company-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0;
+  border: 0;
+}
+
+.operator-page .operator-company-actions button {
+  min-height: 38px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+}
+
+.operator-page
+  .operator-company
+  > .operator-company-actions
+  > .operator-key-confirmation {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+@media (max-width: 1099px) {
+  .operator-page .operator-company {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

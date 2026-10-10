@@ -125,6 +125,20 @@ export function CompaniesSection({
     keyPanel.current?.focus();
   }, [issuedKey]);
 
+  async function copyIssuedKey() {
+    if (!issuedKey) return;
+    try {
+      if (!navigator.clipboard?.writeText)
+        throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(issuedKey.accessKey);
+      setCopyStatus("Access key copied.");
+    } catch {
+      setCopyStatus(
+        "Clipboard unavailable. Select the key above and copy it manually.",
+      );
+    }
+  }
+
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -191,10 +205,7 @@ export function CompaniesSection({
       aria-labelledby="companies-title"
     >
       <h2 id="companies-title">Companies</h2>
-      <p>
-        Create the company profile first. A private access key is generated
-        automatically so the company can manage its offers in any browser.
-      </p>
+      <p>Add a company name, website, and address to issue an access key.</p>
       {issuedKey && (
         <div
           className="portal-key"
@@ -209,22 +220,11 @@ export function CompaniesSection({
           </div>
           <code>{issuedKey.accessKey}</code>
           <div className="portal-actions">
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(issuedKey.accessKey).then(
-                  () => setCopyStatus("Copied"),
-                  () =>
-                    setError(
-                      "Could not copy. Select the key and copy it manually.",
-                    ),
-                );
-              }}
-            >
-              {copyStatus || "Copy key"}
+            <button type="button" onClick={() => void copyIssuedKey()}>
+              Copy key
             </button>
-            <span className="portal-hint" aria-live="polite">
-              {copyStatus && "Access key copied."}
+            <span className="portal-hint" role="status" aria-live="polite">
+              {copyStatus}
             </span>
             <button
               type="button"
@@ -268,47 +268,63 @@ export function CompaniesSection({
               className="portal-item operator-company"
             >
               <div className="operator-company-main">
-                <span className="status-chip" data-state={organization.status}>
-                  {organization.status === "active" ? "Active" : "Suspended"}
-                </span>
-                <h3>{organization.name}</h3>
-                <p>{organization.address || "Business address needed"}</p>
-                {organization.website_url ? (
-                  <a
-                    className="portal-url"
-                    href={organization.website_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div className="operator-company-heading">
+                  <h3>{organization.name}</h3>
+                  <span
+                    className="status-chip"
+                    data-state={organization.status}
                   >
-                    {organization.website_url}
-                  </a>
-                ) : (
-                  <p className="field-error">Company website needed</p>
-                )}
-                <p className="portal-hint">
-                  {organization.access_key_hint
-                    ? `Access key active, ends in ${organization.access_key_hint}`
-                    : "No access key issued"}
-                </p>
-                <p className="operator-counts">
-                  {total === 0
-                    ? "No vacancies yet"
-                    : countOrder
-                        .filter((state) => counts[state])
-                        .map(
-                          (state) =>
-                            `${counts[state]} ${listingStateLabels[state].toLowerCase()}`,
-                        )
-                        .join(" · ")}
-                </p>
+                    {organization.status === "active" ? "Active" : "Suspended"}
+                  </span>
+                </div>
+                <div className="operator-company-details">
+                  <p>{organization.address || "Business address needed"}</p>
+                  {organization.website_url ? (
+                    <a
+                      className="portal-url"
+                      href={organization.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {organization.website_url}
+                    </a>
+                  ) : (
+                    <p className="field-error">Company website needed</p>
+                  )}
+                </div>
+                <div className="operator-company-summary">
+                  <p className="portal-hint">
+                    {organization.access_key_hint
+                      ? `Key ends in ${organization.access_key_hint}`
+                      : "No access key"}
+                  </p>
+                  <p className="operator-counts">
+                    {total === 0
+                      ? "No vacancies yet"
+                      : countOrder
+                          .filter((state) => counts[state])
+                          .map(
+                            (state) =>
+                              `${counts[state]} ${listingStateLabels[state].toLowerCase()}`,
+                          )
+                          .join(", ")}
+                  </p>
+                </div>
               </div>
               <div className="portal-actions operator-company-actions">
+                {confirmingKey === organization.id && (
+                  <p className="operator-key-confirmation portal-span">
+                    Replacing this key will sign out all current company
+                    sessions. The new key will be shown once.
+                  </p>
+                )}
                 <button
                   type="button"
                   className="button-secondary"
+                  aria-label={`View ${total} vacancies for ${organization.name}`}
                   onClick={() => onShowVacancies(organization.id)}
                 >
-                  Vacancies
+                  Vacancies ({total})
                 </button>
                 <button
                   type="button"
