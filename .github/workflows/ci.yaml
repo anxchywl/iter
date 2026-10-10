@@ -65,6 +65,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Pull Docker Hub images through a mirror
+        # images are pinned by digest, so the mirror can only serve identical content; misses fall back to Docker Hub
+        run: |
+          config=/etc/docker/daemon.json
+          current=$(sudo cat "$config" 2>/dev/null || echo '{}')
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          sudo systemctl restart docker
+          docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          # runners come signed in to Docker Hub, and the mirror rejects those credentials
+          docker logout
       - name: Scan secrets and validate configuration
         env:
           CI: "true"
@@ -80,6 +90,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Pull Docker Hub images through a mirror
+        # images are pinned by digest, so the mirror can only serve identical content; misses fall back to Docker Hub
+        run: |
+          config=/etc/docker/daemon.json
+          current=$(sudo cat "$config" 2>/dev/null || echo '{}')
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          sudo systemctl restart docker
+          docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          # runners come signed in to Docker Hub, and the mirror rejects those credentials
+          docker logout
       - name: Verify backend and database
         env:
           CI: "true"
@@ -120,6 +140,16 @@ jobs:
           node-version: 22.22.3
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Pull Docker Hub images through a mirror
+        # images are pinned by digest, so the mirror can only serve identical content; misses fall back to Docker Hub
+        run: |
+          config=/etc/docker/daemon.json
+          current=$(sudo cat "$config" 2>/dev/null || echo '{}')
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+          sudo systemctl restart docker
+          docker info --format '{{json .RegistryConfig.Mirrors}}' | grep -q mirror.gcr.io
+          # runners come signed in to Docker Hub, and the mirror rejects those credentials
+          docker logout
       - name: Verify browser flows and local stack
         env:
           CI: "true"
