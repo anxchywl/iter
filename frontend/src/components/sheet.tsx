@@ -94,6 +94,7 @@ export function Sheet({
     if (
       !node ||
       event.button !== 0 ||
+      window.matchMedia("(min-width: 700px)").matches ||
       (event.target instanceof Element &&
         event.target.closest("button, a, input, textarea, select"))
     )
